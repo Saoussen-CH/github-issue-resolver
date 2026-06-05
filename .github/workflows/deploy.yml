@@ -1,0 +1,61 @@
+name: Deploy Fix with Managed Agent
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+jobs:
+  deploy:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r cd-agent/requirements.txt
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ secrets.CLOUD_RUN_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push container image
+        id: build
+        env:
+          PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.CLOUD_RUN_REGION }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          IMAGE="$REGION-docker.pkg.dev/$PROJECT/managed-issue-resolver/target-app:$SHA"
+          BUILD_ID=$(gcloud builds submit target-app/ --tag "$IMAGE" --project "$PROJECT" --quiet --async --format="value(id)")
+          echo "Waiting for build $BUILD_ID..."
+          gcloud builds wait "$BUILD_ID" --project "$PROJECT" --timeout=600
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Run CD agent
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          CLOUD_RUN_REGION: ${{ secrets.CLOUD_RUN_REGION }}
+          CLOUD_RUN_SERVICE: target-app
+          CD_AGENT_ID: ${{ secrets.CD_AGENT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python cd-agent/deploy.py \
+            "${{ github.event.pull_request.html_url }}" \
+            "${{ steps.build.outputs.image }}"

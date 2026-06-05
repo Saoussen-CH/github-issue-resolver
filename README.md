@@ -1,0 +1,298 @@
+# managed-issue-resolver
+
+Autonomous GitHub issue resolution using the Google Managed Agents API on Vertex AI Agent Platform.
+
+Label any issue `ai-resolve` and a managed agent reads the issue via GitHub MCP, clones the repo, writes a fix, runs the tests, and opens a PR. When the PR merges, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, reads logs via Cloud Logging MCP, then promotes or rolls back automatically.
+
+No orchestration framework. No custom sandbox. Two GitHub Actions workflows, two SKILL.md files, three hosted MCP servers, one GCS bucket for skills.
+
+## The app
+
+A conference session browser for a developer summit. Shows 12 sessions across 5 tracks (AI & ML, Cloud, Mobile, Web, Security) over 2 days. Attendees can filter by track, filter by day, and search by speaker name.
+
+The filters are broken. Clicking any track filter returns an empty list. Filtering by day also returns nothing. Searching by speaker name is case-sensitive. The session count badge shows the wrong number. All four bugs are in `utils.py`. The agent reads the issue, finds the root cause, fixes the code, and opens a PR.
+
+## How it works
+
+```
+Issue labeled "ai-resolve"
+        ↓
+GitHub Actions → resolve.py
+        ↓
+Resolver Agent (Agent Platform):
+  - GitHub MCP (hosted by GitHub): read issue, open PR, post comment
+  - Sandbox: git clone, run tests, iterate, push branch
+        ↓
+Human reviews and merges PR
+        ↓
+GitHub Actions: build Docker image (Cloud Build)
+        ↓
+CD Agent (Agent Platform):
+  - gcloud: deploy canary revision at 10%
+  - Cloud Monitoring MCP (hosted by Google): poll error rate every 60s for 5 minutes
+  - Cloud Logging MCP (hosted by Google): read error details on rollback
+  - GitHub MCP (hosted by GitHub): post comment, close issue on promotion
+        ↓
+Issue closed with deployed revision and live URL
+```
+
+## MCP servers
+
+All three MCP servers are hosted - no deployment or infrastructure required.
+
+| Server | URL | Auth |
+|---|---|---|
+| GitHub | `https://api.githubcopilot.com/mcp/` | `GITHUB_TOKEN` (auto-provided by GitHub Actions) |
+| Cloud Monitoring | `https://monitoring.googleapis.com/mcp` | GCP access token |
+| Cloud Logging | `https://logging.googleapis.com/mcp` | GCP access token |
+
+## Structure
+
+```
+.github/workflows/
+  resolve.yml           # triggered on issue labeled "ai-resolve"
+  deploy.yml            # triggered on PR merged to main
+
+resolver/
+  resolve.py            # Resolver Agent: calls Managed Agents API
+  requirements.txt
+
+cd-agent/
+  deploy.py             # CD Agent: calls Managed Agents API
+  AGENTS.md             # CD agent system instruction (passed at agent creation)
+  SKILL.md              # canary deploy playbook (uploaded to GCS)
+  requirements.txt
+
+setup/
+  upload_skills.sh      # uploads SKILL.md files to GCS bucket
+  create_agents.py      # creates named agents on Agent Platform (run once)
+  delete_agents.py      # deletes agents (run before recreating)
+  test_agents.py        # smoke-tests agents after creation
+  reset_demo.sh         # restores bugs, closes open PRs, redeploys broken app
+
+target-app/             # the conference session browser
+  app.py
+  utils.py              # 4 seeded bugs
+  templates/
+    index.html          # conference schedule UI
+  tests/
+  conftest.py           # adds target-app/ to sys.path for pytest
+  Dockerfile
+  requirements.txt
+  .agents/
+    AGENTS.md           # resolver agent system instruction (passed at agent creation)
+    skills/fix-issue/
+      SKILL.md          # fix-issue playbook (uploaded to GCS)
+```
+
+## Seeded bugs
+
+| Bug | File | Root cause |
+|---|---|---|
+| Filter by track returns no sessions | `utils.py:filter_by_track` | Input normalised to "ai-and-ml" but sessions store "AI & ML" |
+| Filter by day returns no sessions | `utils.py:filter_by_day` | Day param arrives as string "1", sessions store int 1 |
+| Speaker search is case-sensitive | `utils.py:search_by_speaker` | "eric" does not match "Eric Schmidt" |
+| Session count shows wrong number | `utils.py:session_count` | Counts all sessions instead of the filtered subset |
+
+## Setup
+
+### 0. Push the repo to GitHub
+
+```bash
+git add .
+git commit -m "Initial commit"
+gh repo create managed-issue-resolver --public --source=. --remote=origin --push
+```
+
+### 1. Fill in `.env` and authenticate
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` — replace the two placeholder values:
+
+```
+GOOGLE_CLOUD_PROJECT=your-project-id
+GCS_SKILLS_BUCKET=managed-issue-resolver-skills-your-project-id
+```
+
+Then authenticate:
+
+```bash
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project $(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+```
+
+Verify:
+
+```bash
+gcloud auth list
+gcloud config get project
+```
+
+### 2. Enable APIs
+
+```bash
+PROJECT=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+
+gcloud services enable \
+  aiplatform.googleapis.com \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  monitoring.googleapis.com \
+  logging.googleapis.com \
+  --project $PROJECT
+```
+
+### 3. Create a service account and assign roles
+
+```bash
+PROJECT=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+SA=managed-issue-resolver@$PROJECT.iam.gserviceaccount.com
+
+gcloud iam service-accounts create managed-issue-resolver \
+  --display-name="Managed Issue Resolver" \
+  --project=$PROJECT
+
+for ROLE in \
+  roles/aiplatform.user \
+  roles/run.admin \
+  roles/cloudbuild.builds.editor \
+  roles/artifactregistry.writer \
+  roles/storage.admin \
+  roles/storage.objectViewer \
+  roles/mcp.toolUser \
+  roles/monitoring.admin \
+  roles/logging.admin \
+  roles/logging.viewer \
+  roles/serviceusage.serviceUsageConsumer \
+  roles/iam.serviceAccountUser; do
+  gcloud projects add-iam-policy-binding $PROJECT \
+    --member="serviceAccount:$SA" \
+    --role="$ROLE" --quiet
+done
+```
+
+### 4. Download the key and add GitHub secrets
+
+```bash
+PROJECT=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+SA=managed-issue-resolver@$PROJECT.iam.gserviceaccount.com
+
+gcloud iam service-accounts keys create sa-key.json \
+  --iam-account=$SA --project=$PROJECT
+```
+
+Add secrets to your GitHub repo (Settings → Secrets and variables → Actions):
+
+```bash
+PROJECT=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+
+gh secret set GCP_SA_KEY < sa-key.json
+gh secret set GCP_PROJECT_ID --body "$PROJECT"
+gh secret set CLOUD_RUN_REGION --body "us-central1"
+# GCS_SKILLS_BUCKET, RESOLVER_AGENT_ID and CD_AGENT_ID are added in step 5
+```
+
+Then delete the local key:
+
+```bash
+rm sa-key.json
+```
+
+`GITHUB_TOKEN` is provided automatically by GitHub Actions. No action needed.
+
+### 4b. Allow GitHub Actions to create pull requests
+
+Go to your GitHub repo: **Settings → Actions → General → Workflow permissions**
+
+Check: **Allow GitHub Actions to create and approve pull requests**
+
+### 5. Create GCS bucket, upload skills, and create named agents
+
+SKILL.md files are stored in GCS and mounted into the agent sandbox at runtime. AGENTS.md files are used as `system_instruction` when creating the named agents. Agents are created with standard tools (`code_execution`, `google_search`, `url_context`) plus GCS skill sources. GitHub MCP and Google MCP servers are added at interaction time using `X-MCP-Exclude-Tools: delete_file` to avoid a name conflict with the sandbox's built-in `delete_file` tool.
+
+```bash
+PROJECT=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+GCS_SKILLS_BUCKET=$(grep GCS_SKILLS_BUCKET .env | cut -d= -f2)
+
+gcloud storage buckets create gs://$GCS_SKILLS_BUCKET \
+  --location=us-central1 \
+  --project=$PROJECT
+
+gh secret set GCS_SKILLS_BUCKET --body "$GCS_SKILLS_BUCKET"
+
+bash setup/upload_skills.sh
+
+uv sync
+uv run python setup/create_agents.py
+```
+
+The script prints the two agent IDs. Add them as GitHub secrets:
+
+```bash
+gh secret set RESOLVER_AGENT_ID --body "managed-issue-resolver"
+gh secret set CD_AGENT_ID --body "managed-issue-cd"
+```
+
+Verify the agents initialise correctly before triggering the workflow:
+
+```bash
+uv run python setup/test_agents.py
+```
+
+Agent IDs are permanent. Re-run `upload_skills.sh` + `create_agents.py` only if you change SKILL.md files or delete the agents.
+
+### 6. Create Artifact Registry repo and deploy initial app
+
+```bash
+PROJECT=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+
+gcloud artifacts repositories create managed-issue-resolver \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=$PROJECT
+
+gcloud run deploy target-app \
+  --source target-app/ \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --project=$PROJECT
+```
+
+### 7. Trigger a resolution
+
+```bash
+# Create the label
+gh label create ai-resolve --color "0075ca" --description "Trigger AI issue resolution"
+
+# Open an issue and label it - this triggers the workflow immediately
+gh issue create \
+  --title "Track filter returns no sessions" \
+  --body "When clicking any track filter (AI & ML, Cloud, Mobile, etc.) the session list becomes empty. All sessions disappear regardless of which track is selected. Expected: only sessions matching the selected track should appear. Bug is in \`target-app/utils.py\`." \
+  --label "ai-resolve"
+
+# Watch the Actions run
+gh run watch
+
+# When the agent opens a PR, review and merge it
+gh pr list
+gh pr diff 1
+gh pr merge 1 --squash --delete-branch
+```
+
+Merging the PR triggers the CD agent, which deploys the fix and closes the issue automatically.
+
+### Reset for another run
+
+After the demo completes the bugs are fixed in `main`. To run the demo again:
+
+```bash
+bash setup/reset_demo.sh
+git push origin master
+```
+
+This restores the 4 bugs in `utils.py`, closes any open resolver PRs, commits the reset, and redeploys the broken app to Cloud Run. Then open a new issue with the `ai-resolve` label.
