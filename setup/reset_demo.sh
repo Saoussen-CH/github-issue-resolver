@@ -78,17 +78,16 @@ PYEOF
 
 echo "  utils.py restored to buggy state"
 
-# 2. Close any open PRs from the resolver agent
+# 2. Close any open PRs
 echo ""
-echo "  Closing open resolver PRs..."
+echo "  Closing open PRs..."
 gh pr list --state open --json number,headRefName \
   | python3 -c "
 import json, sys, subprocess
 prs = json.load(sys.stdin)
 for pr in prs:
-    if pr['headRefName'].startswith('fix/'):
-        subprocess.run(['gh', 'pr', 'close', str(pr['number']), '--delete-branch'], check=False)
-        print(f'    Closed PR #{pr[\"number\"]} ({pr[\"headRefName\"]})')
+    subprocess.run(['gh', 'pr', 'close', str(pr['number']), '--delete-branch'], check=False)
+    print(f'    Closed PR #{pr[\"number\"]} ({pr[\"headRefName\"]})')
 if not prs:
     print('    No open PRs to close')
 "
