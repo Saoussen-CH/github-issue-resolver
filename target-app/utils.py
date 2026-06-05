@@ -28,20 +28,23 @@ def get_sessions(track=None, day=None, speaker=None):
 
 
 def filter_by_track(sessions, track):
-    return [s for s in sessions if s["track"] == track]
+    # BUG 1: normalises the input but sessions store display names as-is.
+    # "AI & ML" becomes "ai-and-ml" which never matches "AI & ML".
+    normalized = track.lower().replace(" ", "-").replace("&", "and")
+    return [s for s in sessions if s["track"] == normalized]
 
 
 def filter_by_day(sessions, day):
-    try:
-        day_val = int(day)
-    except (ValueError, TypeError):
-        day_val = day
-    return [s for s in sessions if s["day"] == day_val]
+    # BUG 2: sessions store day as int (1, 2) but the param arrives as a string.
+    # "1" != 1 in Python - returns empty list for every day.
+    return [s for s in sessions if s["day"] == day]
 
 
 def search_by_speaker(sessions, query):
-    return [s for s in sessions if query.lower() in s["speaker"].lower()]
+    # BUG 3: case-sensitive match - "eric" never finds "Eric Schmidt".
+    return [s for s in sessions if query in s["speaker"]]
 
 
 def session_count(sessions):
-    return len(sessions)
+    # BUG 4: counts from the full SESSIONS list, not the filtered one passed in.
+    return len(SESSIONS)
