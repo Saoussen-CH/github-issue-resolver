@@ -2,10 +2,11 @@
 # Reset the demo to its broken state so it can be run again from scratch.
 #
 # What this does:
-#   1. Closes any open PRs
-#   2. Restores the 4 seeded bugs in target-app/utils.py (from setup/utils_broken.py)
-#   3. Commits and pushes the reset
-#   4. Redeploys the broken app to Cloud Run
+#   1. Cancels any in-progress CD workflows (so they don't overwrite the reset)
+#   2. Closes any open PRs
+#   3. Restores the 4 seeded bugs in target-app/utils.py (from setup/utils_broken.py)
+#   4. Commits and pushes the reset
+#   5. Redeploys the broken app to Cloud Run
 #
 # Usage:
 #   bash setup/reset_demo.sh
@@ -22,7 +23,19 @@ SERVICE="${CLOUD_RUN_SERVICE:-target-app}"
 echo "Resetting demo..."
 echo ""
 
-# 1. Close any open PRs
+# 1. Cancel any in-progress CD workflows so they don't overwrite the reset
+echo "  Cancelling in-progress deploy workflows..."
+IN_PROGRESS=$(gh run list --workflow=deploy.yml --status=in_progress --json databaseId --jq '.[].databaseId' 2>/dev/null || true)
+if [ -n "$IN_PROGRESS" ]; then
+  echo "$IN_PROGRESS" | xargs -I{} gh run cancel {}
+  echo "    Cancelled. Waiting 10s for cancellation to take effect..."
+  sleep 10
+else
+  echo "    No in-progress deploy workflows."
+fi
+
+# 2. Close any open PRs
+echo ""
 echo "  Closing open PRs..."
 gh pr list --state open --json number,headRefName \
   | python3 -c "
