@@ -2,11 +2,11 @@
 # Reset the demo to its broken state so it can be run again from scratch.
 #
 # What this does:
-#   1. Cancels any in-progress CD workflows (so they don't overwrite the reset)
+#   1. Waits for any in-progress CD workflows to finish
 #   2. Closes any open PRs
 #   3. Restores the 4 seeded bugs in target-app/utils.py (from setup/utils_broken.py)
 #   4. Commits and pushes the reset
-#   5. Redeploys the broken app to Cloud Run
+#   5. Redeploys the broken app to Cloud Run (routes to latest automatically)
 #
 # Usage:
 #   bash setup/reset_demo.sh
@@ -77,19 +77,7 @@ gcloud run deploy "$SERVICE" \
   --project "$PROJECT" \
   --quiet
 
-# 5. Explicitly route all traffic to the new revision.
-# The CD agent pins traffic to a specific revision via update-traffic.
-# A new deploy alone won't override that pin - we must set traffic explicitly.
-echo ""
-echo "  Routing traffic to latest revision..."
-LATEST_REV=$(gcloud run revisions list \
-  --service "$SERVICE" --region "$REGION" --project "$PROJECT" \
-  --sort-by "~createTime" --limit 1 --format "value(name)")
-gcloud run services update-traffic "$SERVICE" \
-  --region "$REGION" --project "$PROJECT" \
-  --to-revisions "$LATEST_REV=100" --quiet
-echo "  Serving: $LATEST_REV"
 
-echo ""
+
 echo "Done. Demo is reset and ready."
 echo "Open a new issue with the 'ai-resolve' label to trigger the agent."

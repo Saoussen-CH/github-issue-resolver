@@ -93,8 +93,8 @@ Called with a merged PR URL, a pre-built container image, and GCP credentials.
    ```bash
    gcloud run services update-traffic $SERVICE \
      --region $REGION --project $PROJECT \
-     --to-revisions "$NEW_REV=100" --quiet
-   echo "Promoted $NEW_REV to 100%"
+     --to-latest --quiet
+   echo "Promoted to latest (100%)"
    ```
 
    **7b. Rollback:**
