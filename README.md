@@ -4,7 +4,7 @@ Autonomous GitHub issue resolution using the Google Managed Agents API on Vertex
 
 Label any issue `ai-resolve` and a managed agent reads the issue via GitHub MCP, clones the repo, writes a fix, runs the tests, and opens a PR. When the PR merges, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, reads logs via Cloud Logging MCP, then promotes or rolls back automatically.
 
-No orchestration framework. No custom sandbox. Two GitHub Actions workflows, two SKILL.md files, three hosted MCP servers, one GCS bucket for skills.
+No orchestration framework. No infrastructure to manage: the Managed Agents API provisions a full sandbox (Bash, Python, git, web access) on demand. Two GitHub Actions workflows, two SKILL.md files, three hosted MCP servers, one GCS bucket for skills.
 
 ## The app
 
@@ -14,26 +14,43 @@ The filters are broken. Clicking any track filter returns an empty list. Filteri
 
 ## How it works
 
-```
-Issue labeled "ai-resolve"
-        ↓
-GitHub Actions → resolve.py
-        ↓
-Resolver Agent (Agent Platform):
-  - GitHub MCP (hosted by GitHub): read issue, open PR, post comment
-  - Sandbox: git clone, run tests, iterate, push branch
-        ↓
-Human reviews and merges PR
-        ↓
-GitHub Actions: build Docker image (Cloud Build)
-        ↓
-CD Agent (Agent Platform):
-  - gcloud: deploy canary revision at 10%
-  - Cloud Monitoring MCP (hosted by Google): poll error rate every 60s for 5 minutes
-  - Cloud Logging MCP (hosted by Google): read error details on rollback
-  - GitHub MCP (hosted by GitHub): post comment, close issue on promotion
-        ↓
-Issue closed with deployed revision and live URL
+```mermaid
+flowchart TD
+    A([Issue labeled ai-resolve]) --> B
+
+    subgraph GHA1["GitHub Actions: resolve.yml"]
+        B[Run resolve.py]
+    end
+
+    subgraph RA["Resolver Agent - Agent Platform"]
+        B --> C[Read issue via GitHub MCP]
+        C --> D["git clone + pip install"]
+        D --> E[Run pytest - record failures]
+        E --> F[Fix utils.py]
+        F --> G[Run pytest - all pass]
+        G --> H[Push branch + open PR via GitHub MCP]
+    end
+
+    H --> I([Human reviews and merges PR])
+    I --> J
+
+    subgraph GHA2["GitHub Actions: deploy.yml"]
+        J[Cloud Build: build and push image]
+        J --> K[Run deploy.py]
+    end
+
+    subgraph CDA["CD Agent - Agent Platform"]
+        K --> L[Deploy canary revision at 10%]
+        L --> M{Poll Cloud Monitoring MCP\nevery 60s for 5 minutes}
+        M -->|error rate OK| M
+        M -->|all checks pass| N[Promote via --to-latest]
+        M -->|error rate too high| O[Rollback to stable revision]
+        N --> P[Close issue via GitHub MCP]
+        O --> Q[Comment rollback details via GitHub MCP\nusing Cloud Logging MCP for error context]
+    end
+
+    P --> R([Issue closed with live URL])
+    Q --> S([Issue stays open for investigation])
 ```
 
 ## MCP servers
@@ -51,7 +68,7 @@ All three MCP servers are hosted - no deployment or infrastructure required.
 ```
 .github/workflows/
   resolve.yml           # triggered on issue labeled "ai-resolve"
-  deploy.yml            # triggered on PR merged to main
+  deploy.yml            # triggered on PR merged to master
 
 resolver/
   resolve.py            # Resolver Agent: calls Managed Agents API
@@ -68,7 +85,8 @@ setup/
   create_agents.py      # creates named agents on Agent Platform (run once)
   delete_agents.py      # deletes agents (run before recreating)
   test_agents.py        # smoke-tests agents after creation
-  reset_demo.sh         # restores bugs, closes open PRs, redeploys broken app
+  reset_demo.sh         # restores bugs, closes open PRs, commits, pushes, redeploys
+  utils_broken.py       # canonical buggy utils.py (source of truth for reset)
 
 target-app/             # the conference session browser
   app.py
@@ -288,11 +306,10 @@ Merging the PR triggers the CD agent, which deploys the fix and closes the issue
 
 ### Reset for another run
 
-After the demo completes the bugs are fixed in `main`. To run the demo again:
+After the demo completes, run:
 
 ```bash
 bash setup/reset_demo.sh
-git push origin master
 ```
 
-This restores the 4 bugs in `utils.py`, closes any open resolver PRs, commits the reset, and redeploys the broken app to Cloud Run. Then open a new issue with the `ai-resolve` label.
+This waits for any in-progress CD workflows, closes open PRs, restores the 4 bugs in `utils.py`, commits and pushes to master, then redeploys the broken app to Cloud Run. Then open a new issue with the `ai-resolve` label.
