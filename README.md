@@ -128,7 +128,7 @@ gh repo create managed-issue-resolver --public --source=. --remote=origin --push
 cp .env.example .env
 ```
 
-Edit `.env` — replace the two placeholder values:
+Edit `.env` and replace the two placeholder values:
 
 ```
 GOOGLE_CLOUD_PROJECT=your-project-id
