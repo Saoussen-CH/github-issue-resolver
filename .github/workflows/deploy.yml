@@ -45,7 +45,15 @@ jobs:
           IMAGE="$REGION-docker.pkg.dev/$PROJECT/managed-issue-resolver/target-app:$SHA"
           BUILD_ID=$(gcloud builds submit target-app/ --tag "$IMAGE" --project "$PROJECT" --quiet --async --format="value(id)")
           echo "Waiting for build $BUILD_ID..."
-          gcloud builds wait "$BUILD_ID" --project "$PROJECT" --timeout=600
+          for i in $(seq 1 40); do
+            STATUS=$(gcloud builds describe "$BUILD_ID" --project "$PROJECT" --format="value(status)")
+            echo "  status: $STATUS"
+            if [ "$STATUS" = "SUCCESS" ]; then break; fi
+            if [ "$STATUS" = "FAILURE" ] || [ "$STATUS" = "CANCELLED" ] || [ "$STATUS" = "TIMEOUT" ]; then
+              echo "Build failed: $STATUS"; exit 1
+            fi
+            sleep 15
+          done
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Run CD agent
