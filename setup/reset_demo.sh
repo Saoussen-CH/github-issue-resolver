@@ -23,16 +23,18 @@ SERVICE="${CLOUD_RUN_SERVICE:-target-app}"
 echo "Resetting demo..."
 echo ""
 
-# 1. Cancel any in-progress CD workflows so they don't overwrite the reset
-echo "  Cancelling in-progress deploy workflows..."
-IN_PROGRESS=$(gh run list --workflow=deploy.yml --status=in_progress --json databaseId --jq '.[].databaseId' 2>/dev/null || true)
-if [ -n "$IN_PROGRESS" ]; then
-  echo "$IN_PROGRESS" | xargs -I{} gh run cancel {}
-  echo "    Cancelled. Waiting 10s for cancellation to take effect..."
-  sleep 10
-else
-  echo "    No in-progress deploy workflows."
-fi
+# 1. Wait for any in-progress CD workflows to finish so they don't overwrite the reset
+echo "  Waiting for any in-progress deploy workflows to finish..."
+for i in $(seq 1 60); do
+  COUNT=$(gh run list --workflow=deploy.yml --json status \
+    --jq '[.[] | select(.status == "in_progress" or .status == "queued")] | length' 2>/dev/null || echo "0")
+  if [ "$COUNT" = "0" ]; then
+    echo "    No active deploy workflows."
+    break
+  fi
+  echo "    $COUNT workflow(s) still running... waiting 15s (check $i/60)"
+  sleep 15
+done
 
 # 2. Close any open PRs
 echo ""
@@ -74,6 +76,19 @@ gcloud run deploy "$SERVICE" \
   --allow-unauthenticated \
   --project "$PROJECT" \
   --quiet
+
+# 5. Explicitly route all traffic to the new revision.
+# The CD agent pins traffic to a specific revision via update-traffic.
+# A new deploy alone won't override that pin - we must set traffic explicitly.
+echo ""
+echo "  Routing traffic to latest revision..."
+LATEST_REV=$(gcloud run revisions list \
+  --service "$SERVICE" --region "$REGION" --project "$PROJECT" \
+  --sort-by "~createTime" --limit 1 --format "value(name)")
+gcloud run services update-traffic "$SERVICE" \
+  --region "$REGION" --project "$PROJECT" \
+  --to-revisions "$LATEST_REV=100" --quiet
+echo "  Serving: $LATEST_REV"
 
 echo ""
 echo "Done. Demo is reset and ready."
