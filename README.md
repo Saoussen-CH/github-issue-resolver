@@ -1,6 +1,6 @@
 # managed-issue-resolver
 
-Autonomous GitHub issue resolution using the Google Managed Agents API on Vertex AI Agent Platform.
+Autonomous GitHub issue resolution using the Google Managed Agents API on Gemini Enterprise Agent Platform.
 
 Label any issue `ai-resolve` and a managed agent reads the issue via GitHub MCP, clones the repo, writes a fix, runs the tests, and opens a PR. When the PR merges, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, reads logs via Cloud Logging MCP, then promotes or rolls back automatically.
 
@@ -24,7 +24,7 @@ flowchart TD
 
     B -->|"Managed Agents API\nclient.interactions.create(agent=resolver, tools=[GitHub MCP])"| C
 
-    subgraph RA["Managed Agents Sandbox: Resolver"]
+    subgraph RA["Managed Agents Sandbox: Resolver (Gemini Enterprise Agent Platform)"]
         C[Read issue via GitHub MCP]
         C --> D["git clone + pip install"]
         D --> E[Run pytest - record failures]
@@ -43,7 +43,7 @@ flowchart TD
 
     K -->|"Managed Agents API\nclient.interactions.create(agent=cd, tools=[GitHub MCP, Cloud Monitoring MCP, Cloud Logging MCP])"| L
 
-    subgraph CDA["Managed Agents Sandbox: CD Agent"]
+    subgraph CDA["Managed Agents Sandbox: CD Agent (Gemini Enterprise Agent Platform)"]
         L[Deploy canary revision at 10%]
         L --> M{Poll Cloud Monitoring MCP\nevery 60s for 5 minutes}
         M -->|error rate OK| M
@@ -105,6 +105,15 @@ target-app/             # the conference session browser
     AGENTS.md           # resolver agent system instruction (passed at agent creation)
     skills/fix-issue/
       SKILL.md          # fix-issue playbook (uploaded to GCS)
+
+codelab/
+  index.lab.md          # codelab source (Google Codelabs format)
+  generate.sh           # runs claat export and writes output to docs/
+
+docs/                   # generated codelab (GitHub Pages source)
+  index.html
+  codelab.json
+  .nojekyll
 ```
 
 ## Codelab
