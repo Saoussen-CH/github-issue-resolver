@@ -9,3 +9,5 @@ dist/
 .pytest_cache/
 sa-key.json
 *-key.json
+*.drawio
+managed-issue-resolver-architecture*

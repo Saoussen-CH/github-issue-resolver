@@ -19,11 +19,13 @@ flowchart TD
     A([Issue labeled ai-resolve]) --> B
 
     subgraph GHA1["GitHub Actions: resolve.yml"]
-        B[Run resolve.py]
+        B[resolve.py]
     end
 
-    subgraph RA["Resolver Agent - Agent Platform"]
-        B --> C[Read issue via GitHub MCP]
+    B -->|"Managed Agents API\nclient.interactions.create(agent=resolver, tools=[GitHub MCP])"| C
+
+    subgraph RA["Managed Agents Sandbox: Resolver"]
+        C[Read issue via GitHub MCP]
         C --> D["git clone + pip install"]
         D --> E[Run pytest - record failures]
         E --> F[Fix utils.py]
@@ -36,17 +38,19 @@ flowchart TD
 
     subgraph GHA2["GitHub Actions: deploy.yml"]
         J[Cloud Build: build and push image]
-        J --> K[Run deploy.py]
+        J --> K[deploy.py]
     end
 
-    subgraph CDA["CD Agent - Agent Platform"]
-        K --> L[Deploy canary revision at 10%]
+    K -->|"Managed Agents API\nclient.interactions.create(agent=cd, tools=[GitHub MCP, Cloud Monitoring MCP, Cloud Logging MCP])"| L
+
+    subgraph CDA["Managed Agents Sandbox: CD Agent"]
+        L[Deploy canary revision at 10%]
         L --> M{Poll Cloud Monitoring MCP\nevery 60s for 5 minutes}
         M -->|error rate OK| M
         M -->|all checks pass| N[Promote via --to-latest]
         M -->|error rate too high| O[Rollback to stable revision]
         N --> P[Close issue via GitHub MCP]
-        O --> Q[Comment rollback details via GitHub MCP\nusing Cloud Logging MCP for error context]
+        O --> Q[Comment rollback details\nvia GitHub MCP + Cloud Logging MCP]
     end
 
     P --> R([Issue closed with live URL])
@@ -101,6 +105,20 @@ target-app/             # the conference session browser
     AGENTS.md           # resolver agent system instruction (passed at agent creation)
     skills/fix-issue/
       SKILL.md          # fix-issue playbook (uploaded to GCS)
+```
+
+## Codelab
+
+The step-by-step workshop is in `codelab/index.lab.md` (Google Codelabs format). The generated HTML is published from `docs/` via GitHub Pages.
+
+To regenerate after editing `index.lab.md`:
+
+```bash
+# Install claat (one time)
+go install github.com/googlecodelabs/tools/claat@latest
+
+# Regenerate docs/
+bash codelab/generate.sh
 ```
 
 ## Seeded bugs

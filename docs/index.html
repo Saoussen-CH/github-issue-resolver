@@ -1,0 +1,672 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>Autonomous GitHub Issue Resolution with Google Managed Agents API</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/claat-public/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14" ga4id=""></google-codelab-analytics>
+  <google-codelab codelab-gaid="UA-52746336-1"
+                  codelab-ga4id=""
+                  id="managed-agents-issue-resolver"
+                  title="Autonomous GitHub Issue Resolution with Google Managed Agents API"
+                  environment="web"
+                  feedback-link="https://github.com/googlecodelabs/feedback/issues/new?title=[managed-agents-issue-resolver]">
+    
+      <google-codelab-step label="Overview" duration="5">
+        <p>In this codelab you will build <strong>Managed Issue Resolver</strong>: a system that autonomously resolves GitHub issues and deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Vertex AI Agent Platform.</p>
+<p>Label any issue <code>ai-resolve</code>. A managed agent reads the issue via GitHub MCP, clones the repo, reproduces the failure, fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, then promotes or rolls back automatically.</p>
+<p>No orchestration framework. No LLM wrappers. No custom sandboxes. Two SKILL.md files, two GitHub Actions workflows, three hosted MCP servers.</p>
+<h2 is-upgraded>What you&#39;ll build</h2>
+<pre><code language="language-mermaid" class="language-mermaid">flowchart TD
+    A([Issue labeled ai-resolve]) --&gt; B
+
+    subgraph GHA1[&#34;GitHub Actions: resolve.yml&#34;]
+        B[Run resolve.py]
+    end
+
+    subgraph RA[&#34;Resolver Agent - Agent Platform&#34;]
+        B --&gt; C[Read issue via GitHub MCP]
+        C --&gt; D[&#34;git clone + pip install&#34;]
+        D --&gt; E[Run pytest - record failures]
+        E --&gt; F[Fix utils.py]
+        F --&gt; G[Run pytest - all pass]
+        G --&gt; H[Push branch + open PR via GitHub MCP]
+    end
+
+    H --&gt; I([Human reviews and merges PR])
+    I --&gt; J
+
+    subgraph GHA2[&#34;GitHub Actions: deploy.yml&#34;]
+        J[Cloud Build: build and push image]
+        J --&gt; K[Run deploy.py]
+    end
+
+    subgraph CDA[&#34;CD Agent - Agent Platform&#34;]
+        K --&gt; L[Deploy canary revision at 10%]
+        L --&gt; M{Poll Cloud Monitoring MCP\nevery 60s for 5 minutes}
+        M --&gt;|error rate OK| M
+        M --&gt;|all checks pass| N[Promote via --to-latest]
+        M --&gt;|error rate too high| O[Rollback to stable revision]
+        N --&gt; P[Close issue via GitHub MCP]
+        O --&gt; Q[Comment rollback details via GitHub MCP\nusing Cloud Logging MCP for error context]
+    end
+
+    P --&gt; R([Issue closed with live URL])
+    Q --&gt; S([Issue stays open for investigation])
+</code></pre>
+<h2 is-upgraded>The app you&#39;ll fix</h2>
+<p>A conference session browser showing 12 sessions across 5 tracks (AI &amp; ML, Cloud, Mobile, Web, Security) over 2 days. The app has four seeded bugs, all in <code>utils.py</code>:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Bug</p>
+</td><td colspan="1" rowspan="1"><p>Symptom</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Filter by track</p>
+</td><td colspan="1" rowspan="1"><p>Clicking any track filter returns an empty list</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Filter by day</p>
+</td><td colspan="1" rowspan="1"><p>Filtering by Day 1 or Day 2 returns nothing</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Speaker search</p>
+</td><td colspan="1" rowspan="1"><p>&#34;eric&#34; does not match &#34;Eric Schmidt&#34; (case-sensitive)</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Session count</p>
+</td><td colspan="1" rowspan="1"><p>The count badge shows the wrong number</p>
+</td></tr>
+</table>
+<p>The agent reads the issue, finds the root cause, fixes the code, and opens a PR. You review and merge it. The CD agent deploys the fix automatically.</p>
+<h2 class="checklist" is-upgraded>What you&#39;ll learn</h2>
+<ul class="checklist">
+<li>Call the <strong>Google Managed Agents API</strong> (<code>google-genai</code> SDK with <code>vertexai=True</code>) to create and invoke agents.</li>
+<li>Pass <strong>AGENTS.md</strong> as a system instruction and <strong>SKILL.md</strong> as a GCS-mounted playbook.</li>
+<li>Connect <strong>hosted MCP servers</strong> (GitHub, Cloud Monitoring, Cloud Logging) at interaction time (no deployment needed).</li>
+<li>Implement <strong>canary traffic splitting</strong> on Cloud Run with automated promotion and rollback.</li>
+<li>Build <strong>repeatable demo reset</strong> scripts that cleanly restore a broken state.</li>
+</ul>
+<h2 is-upgraded>What you&#39;ll need</h2>
+<ul>
+<li>A <strong>Google Cloud project</strong> with billing enabled</li>
+<li><strong>Owner</strong> or <strong>Editor</strong> IAM role</li>
+<li>A <strong>GitHub</strong> account with a repository</li>
+<li>Basic Python knowledge</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Set Up Your Environment" duration="7">
+        <h2 is-upgraded>Clone the repository</h2>
+<pre><code language="language-bash" class="language-bash">git clone https://github.com/Saoussen-CH/managed-issue-resolver.git
+cd managed-issue-resolver
+</code></pre>
+<aside class="special"><p><strong>Using this for a demo?</strong> The repo ships with a working target app and seeded bugs. The <code>setup/</code> directory contains everything you need to configure and reset the demo (no manual file editing required).</p>
+</aside>
+<h2 is-upgraded>Authenticate and configure your project</h2>
+<pre><code language="language-bash" class="language-bash">gcloud auth login
+gcloud auth application-default login
+</code></pre>
+<p>Then set your project:</p>
+<pre><code language="language-bash" class="language-bash">export PROJECT_ID=$(gcloud config get-value project)
+export REGION=&#34;us-central1&#34;
+echo &#34;Project: $PROJECT_ID&#34;
+</code></pre>
+<p>Expected output:</p>
+<pre><code language="language-text" class="language-text">Project: my-project-123
+</code></pre>
+<h2 is-upgraded>Enable required APIs</h2>
+<pre><code language="language-bash" class="language-bash">gcloud services enable \
+    aiplatform.googleapis.com \
+    run.googleapis.com \
+    cloudbuild.googleapis.com \
+    artifactregistry.googleapis.com \
+    monitoring.googleapis.com \
+    logging.googleapis.com \
+    storage.googleapis.com \
+    --project $PROJECT_ID
+</code></pre>
+<p>This takes about 1 minute. You&#39;ll see <code>Operation finished successfully</code> when done.</p>
+<aside class="special"><p><strong>Why these APIs? </strong><code>aiplatform.googleapis.com</code> is the Managed Agents API. The rest support Cloud Run deployment (<code>run</code>, <code>cloudbuild</code>, <code>artifactregistry</code>), skill storage (<code>storage</code>), and the hosted MCP servers for monitoring and logging.</p>
+</aside>
+<h2 is-upgraded>Fill in .env</h2>
+<pre><code language="language-bash" class="language-bash">cp .env.example .env
+</code></pre>
+<p>Edit <code>.env</code> and replace the two placeholder values:</p>
+<pre><code>GOOGLE_CLOUD_PROJECT=your-project-id
+GCS_SKILLS_BUCKET=managed-issue-resolver-skills-your-project-id
+</code></pre>
+<aside class="warning"><p><strong>Pick a globally unique bucket name.</strong> GCS bucket names are global, so <code>my-bucket</code> will likely be taken. A safe pattern: <code>managed-issue-resolver-skills-{PROJECT_ID}</code>.</p>
+</aside>
+<p>Install Python dependencies:</p>
+<pre><code language="language-bash" class="language-bash">uv sync
+</code></pre>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Understand the Architecture" duration="5">
+        <p>Before running any scripts, let&#39;s understand the two core concepts that make this system work.</p>
+<h2 is-upgraded>Named agents on Vertex AI Agent Platform</h2>
+<p>The system uses two <strong>named agents</strong> created once via the API and reused across invocations. A named agent is a persistent configuration that stores:</p>
+<ul>
+<li>A base environment (Ubuntu, Python 3.11, Node 20, Bash, web access)</li>
+<li>A system instruction (<code>AGENTS.md</code>)</li>
+<li>GCS-mounted skill files (<code>SKILL.md</code>)</li>
+</ul>
+<p>When you call <code>client.interactions.create(agent=AGENT_ID, ...)</code>, the platform provisions a fresh sandbox with your configuration already applied.</p>
+<pre><code language="language-python" class="language-python">from google import genai
+
+client = genai.Client(vertexai=True, project=PROJECT_ID, location=&#34;global&#34;)
+
+# One-time agent creation (setup/create_agents.py)
+client.agents.create(
+    id=&#34;managed-issue-resolver&#34;,
+    base_agent=&#34;antigravity-preview-05-2026&#34;,
+    description=&#34;Reads a GitHub issue, fixes the bug, runs tests, opens a PR.&#34;,
+    system_instruction=agents_md_content,
+    tools=[
+        {&#34;type&#34;: &#34;code_execution&#34;},
+        {&#34;type&#34;: &#34;google_search&#34;},
+        {&#34;type&#34;: &#34;url_context&#34;},
+    ],
+    base_environment={
+        &#34;type&#34;: &#34;remote&#34;,
+        &#34;sources&#34;: [
+            {
+                &#34;type&#34;: &#34;gcs&#34;,
+                &#34;source&#34;: f&#34;gs://{BUCKET}/resolver/skills/fix-issue&#34;,
+                &#34;target&#34;: &#34;/.agent/skills/fix-issue&#34;,
+            }
+        ],
+        &#34;network&#34;: {&#34;allowlist&#34;: [{&#34;domain&#34;: &#34;*&#34;}]},
+    },
+)
+</code></pre>
+<h2 is-upgraded>SKILL.md: the agent&#39;s playbook</h2>
+<p>The <code>SKILL.md</code> file is a Markdown document uploaded to GCS. When the agent is invoked, it is mounted read-only in the sandbox at <code>/.agent/skills/{name}/</code>. The agent reads it to understand what steps to take.</p>
+<p>This project has two skills:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Skill</p>
+</td><td colspan="1" rowspan="1"><p>Local file</p>
+</td><td colspan="1" rowspan="1"><p>GCS path</p>
+</td><td colspan="1" rowspan="1"><p>Mount path</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>fix-issue</code></p>
+</td><td colspan="1" rowspan="1"><p><code>target-app/.agents/skills/fix-issue/SKILL.md</code></p>
+</td><td colspan="1" rowspan="1"><p><code>resolver/skills/fix-issue/SKILL.md</code></p>
+</td><td colspan="1" rowspan="1"><p><code>/.agent/skills/fix-issue/</code></p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>deploy</code></p>
+</td><td colspan="1" rowspan="1"><p><code>cd-agent/SKILL.md</code></p>
+</td><td colspan="1" rowspan="1"><p><code>cd-agent/skills/deploy/SKILL.md</code></p>
+</td><td colspan="1" rowspan="1"><p><code>/.agent/skills/deploy/</code></p>
+</td></tr>
+</table>
+<p>Skill files use frontmatter for discovery and plain Markdown for instructions:</p>
+<pre><code language="language-markdown" class="language-markdown">---
+name: fix-issue
+description: Clone a repository, diagnose a bug, fix it, and open a pull request.
+---
+
+# Skill: Fix GitHub Issue
+
+## Workflow
+
+1. Read the issue using the GitHub MCP server...
+2. Clone the repository...
+3. Run the existing tests to see the current failure baseline...
+</code></pre>
+<h2 is-upgraded>Hosted MCP servers</h2>
+<p>MCP (Model Context Protocol) servers expose external APIs as tools the agent can call. This project uses three <strong>hosted</strong> MCP servers (no deployment required):</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Server</p>
+</td><td colspan="1" rowspan="1"><p>URL</p>
+</td><td colspan="1" rowspan="1"><p>Used by</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>GitHub</p>
+</td><td colspan="1" rowspan="1"><p><code>https://api.githubcopilot.com/mcp/</code></p>
+</td><td colspan="1" rowspan="1"><p>Both agents: read issues, open PRs, post comments</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Cloud Monitoring</p>
+</td><td colspan="1" rowspan="1"><p><code>https://monitoring.googleapis.com/mcp</code></p>
+</td><td colspan="1" rowspan="1"><p>CD agent: query <code>run.googleapis.com/request_count</code></p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Cloud Logging</p>
+</td><td colspan="1" rowspan="1"><p><code>https://logging.googleapis.com/mcp</code></p>
+</td><td colspan="1" rowspan="1"><p>CD agent: fetch error logs on rollback</p>
+</td></tr>
+</table>
+<p>MCP servers are passed at interaction time via the <code>tools</code> parameter:</p>
+<pre><code language="language-python" class="language-python">stream = client.interactions.create(
+    agent=AGENT_ID,
+    input=prompt,
+    tools=[
+        {
+            &#34;type&#34;: &#34;mcp_server&#34;,
+            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
+            &#34;headers&#34;: {
+                &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
+                &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,   # avoids name conflict
+            },
+        },
+    ],
+    stream=True,
+    background=True,
+    store=True,
+)
+</code></pre>
+<aside class="special"><p><strong>Why </strong><strong><code>X-MCP-Exclude-Tools: delete_file</code></strong><strong>?</strong> The GitHub MCP server exposes a <code>delete_file</code> tool. The Managed Agents sandbox also provides a built-in <code>delete_file</code> tool for the local filesystem. Having two tools with the same name causes a conflict that crashes the interaction. Excluding the GitHub MCP&#39;s <code>delete_file</code> avoids this.</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Create a Service Account" duration="5">
+        <p>The GitHub Actions workflows need GCP credentials to call the Managed Agents API, build Docker images, and deploy to Cloud Run. Create a dedicated service account with the exact roles needed:</p>
+<pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+SA=managed-issue-resolver@$PROJECT_ID.iam.gserviceaccount.com
+
+gcloud iam service-accounts create managed-issue-resolver \
+  --display-name=&#34;Managed Issue Resolver&#34; \
+  --project=$PROJECT_ID
+</code></pre>
+<p>Assign roles:</p>
+<pre><code language="language-bash" class="language-bash">for ROLE in \
+  roles/aiplatform.user \
+  roles/run.admin \
+  roles/cloudbuild.builds.editor \
+  roles/artifactregistry.writer \
+  roles/storage.admin \
+  roles/storage.objectViewer \
+  roles/mcp.toolUser \
+  roles/monitoring.admin \
+  roles/logging.admin \
+  roles/logging.viewer \
+  roles/serviceusage.serviceUsageConsumer \
+  roles/iam.serviceAccountUser; do
+  gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member=&#34;serviceAccount:$SA&#34; \
+    --role=&#34;$ROLE&#34; --quiet
+done
+</code></pre>
+<p>Download the key:</p>
+<pre><code language="language-bash" class="language-bash">gcloud iam service-accounts keys create sa-key.json \
+  --iam-account=$SA --project=$PROJECT_ID
+</code></pre>
+<aside class="warning"><p><strong>Never commit </strong><strong><code>sa-key.json</code></strong><strong>.</strong> The <code>.gitignore</code> already excludes it. Always delete the local copy after adding it to GitHub Secrets in the next step.</p>
+</aside>
+<aside class="special"><p><strong>Why </strong><strong><code>roles/mcp.toolUser</code></strong><strong>?</strong> The Cloud Monitoring and Cloud Logging MCP servers require this role to accept authenticated requests. Without it, the CD agent gets <code>403 Forbidden</code> when querying error rates.</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Add GitHub Secrets" duration="3">
+        <p>The workflows read secrets from the repository. Add them before the first run:</p>
+<pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+
+gh secret set GCP_SA_KEY &lt; sa-key.json
+gh secret set GCP_PROJECT_ID --body &#34;$PROJECT_ID&#34;
+gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34;
+</code></pre>
+<p>Then delete the local key file:</p>
+<pre><code language="language-bash" class="language-bash">rm sa-key.json
+</code></pre>
+<p><code>GITHUB_TOKEN</code> is provided automatically by GitHub Actions (no action needed).</p>
+<aside class="warning"><p><strong>Allow pull request creation.</strong> Go to your GitHub repo: <strong>Settings &gt; Actions &gt; General &gt; Workflow permissions</strong>. Check: <strong>Allow GitHub Actions to create and approve pull requests</strong>. Without this, the resolver agent cannot open a PR and the workflow will fail with a <code>403</code> error.</p>
+</aside>
+<p>The secrets <code>GCS_SKILLS_BUCKET</code>, <code>RESOLVER_AGENT_ID</code>, and <code>CD_AGENT_ID</code> will be added in the next two steps after the bucket and agents are created.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Create GCS Bucket and Upload Skills" duration="5">
+        <p>SKILL.md files are stored in GCS and mounted into the agent sandbox at runtime. Create the bucket and upload both files:</p>
+<pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+GCS_SKILLS_BUCKET=$(grep GCS_SKILLS_BUCKET .env | cut -d= -f2)
+
+gcloud storage buckets create gs://$GCS_SKILLS_BUCKET \
+  --location=us-central1 \
+  --project=$PROJECT_ID
+</code></pre>
+<p>Add the bucket name as a GitHub secret:</p>
+<pre><code language="language-bash" class="language-bash">gh secret set GCS_SKILLS_BUCKET --body &#34;$GCS_SKILLS_BUCKET&#34;
+</code></pre>
+<p>Upload both SKILL.md files:</p>
+<pre><code language="language-bash" class="language-bash">bash setup/upload_skills.sh
+</code></pre>
+<p>Expected output:</p>
+<pre><code language="language-text" class="language-text">Uploading skills to gs://managed-issue-resolver-skills-my-project ...
+[gsutil copy output]
+
+Skills uploaded:
+gs://managed-issue-resolver-skills-my-project/cd-agent/skills/deploy/SKILL.md
+gs://managed-issue-resolver-skills-my-project/resolver/skills/fix-issue/SKILL.md
+
+Note: recreate agents after changing SKILL.md files:
+  uv run python setup/create_agents.py
+</code></pre>
+<aside class="special"><p><strong>Re-run </strong><strong><code>upload_skills.sh</code></strong><strong> whenever you edit a SKILL.md file.</strong> The GCS object is the live version the agent reads at runtime. Local edits have no effect until you upload. After uploading, you also need to recreate the agents (the skill is mounted at agent creation time, not at invocation time).</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Create Named Agents" duration="5">
+        <p>Run <code>create_agents.py</code> once to register both named agents on Vertex AI Agent Platform:</p>
+<pre><code language="language-bash" class="language-bash">uv run python setup/create_agents.py
+</code></pre>
+<p>The script prints the <code>gh secret set</code> commands for both agent IDs. Run them:</p>
+<pre><code language="language-bash" class="language-bash">gh secret set RESOLVER_AGENT_ID --body &#34;managed-issue-resolver&#34;
+gh secret set CD_AGENT_ID --body &#34;managed-issue-cd&#34;
+</code></pre>
+<p>Verify the agents initialize correctly before triggering the workflow:</p>
+<pre><code language="language-bash" class="language-bash">uv run python setup/test_agents.py
+</code></pre>
+<p>Expected output:</p>
+<pre><code language="language-text" class="language-text">Testing: managed-issue-resolver
+  Prompt: Say hello and confirm you can access the GitHub MCP server.
+  interaction.created
+  PASS: agent initialized and completed successfully
+
+Testing: managed-issue-cd
+  Prompt: Say hello and confirm you can access the GitHub, Cloud Monitoring, and Cloud Loggi
+  interaction.created
+  PASS: agent initialized and completed successfully
+
+========================================
+All agents OK. Ready to trigger the workflow.
+</code></pre>
+<aside class="special"><p><strong>Agent IDs are permanent.</strong> Once created, the agent ID never changes. Re-run <code>upload_skills.sh</code> and then <code>create_agents.py</code> only if you change SKILL.md files or delete the agents. The GitHub secrets never need updating once set.</p>
+</aside>
+<aside class="warning"><p><strong>If you see </strong><strong><code>GOOGLE_CLOUD_PROJECT: KeyError</code></strong>, your <code>.env</code> file is not filled in or not being loaded. Check that <code>GOOGLE_CLOUD_PROJECT=your-project-id</code> is set correctly in <code>.env</code> and that you ran the command from the repo root.</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Deploy the Target App" duration="5">
+        <p>Create an Artifact Registry repository to store the Docker images that Cloud Build will produce:</p>
+<pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+
+gcloud artifacts repositories create managed-issue-resolver \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=$PROJECT_ID
+</code></pre>
+<p>Deploy the initial (broken) version of the conference session browser to Cloud Run:</p>
+<pre><code language="language-bash" class="language-bash">gcloud run deploy target-app \
+  --source target-app/ \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --project=$PROJECT_ID
+</code></pre>
+<p>This takes 2-3 minutes. When complete, you&#39;ll see:</p>
+<pre><code language="language-text" class="language-text">Service URL: https://target-app-xxxx.us-central1.run.app
+</code></pre>
+<p>Open the URL in your browser. Click any track filter: notice the session list goes empty. That is the first of four seeded bugs the agent will fix.</p>
+<aside class="warning"><p><strong><code>--allow-unauthenticated</code></strong><strong> is intentional here.</strong> It makes the app publicly accessible for demo purposes. In production, remove this flag and add IAM-based authentication.</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Trigger Issue Resolution" duration="8">
+        <h2 is-upgraded>Create the <code>ai-resolve</code> label</h2>
+<p>The GitHub Actions <code>resolve.yml</code> workflow fires when an issue is labeled <code>ai-resolve</code>:</p>
+<pre><code language="language-bash" class="language-bash">gh label create ai-resolve --color &#34;0075ca&#34; --description &#34;Trigger AI issue resolution&#34;
+</code></pre>
+<h2 is-upgraded>Open an issue</h2>
+<pre><code language="language-bash" class="language-bash">gh issue create \
+  --title &#34;Track filter returns no sessions&#34; \
+  --body &#34;When clicking any track filter (AI &amp; ML, Cloud, Mobile, etc.) the session list becomes empty. All sessions disappear regardless of which track is selected.
+
+Expected: only sessions matching the selected track should appear.
+
+Bug is in \`target-app/utils.py\`.&#34; \
+  --label &#34;ai-resolve&#34;
+</code></pre>
+<p>The <code>ai-resolve</code> label triggers the workflow immediately.</p>
+<h2 is-upgraded>Watch the agent work</h2>
+<pre><code language="language-bash" class="language-bash">gh run watch
+</code></pre>
+<p>You&#39;ll see the GitHub Actions run progress through these steps:</p>
+<pre><code language="language-text" class="language-text">✓ Checkout
+✓ Set up Python
+✓ Install dependencies
+✓ Authenticate to Google Cloud
+✓ Comment on issue
+● Run resolver agent    &lt;- agent is working here
+</code></pre>
+<p>The &#34;Comment on issue&#34; step posts a message to the issue: &#34;Agent is working on this. A PR will appear here when the fix is ready.&#34;</p>
+<h2 is-upgraded>What the agent does</h2>
+<p>While the workflow is running, the Managed Agent is executing inside a hosted sandbox:</p>
+<ol type="1">
+<li><strong>Reads the issue</strong> via GitHub MCP (gets the title, body, and issue number)</li>
+<li><strong>Clones the repo</strong> using the authenticated URL injected via the prompt</li>
+<li><strong>Installs dependencies</strong> from <code>requirements.txt</code></li>
+<li><strong>Runs pytest</strong> (records which tests fail: all 4 filter tests)</li>
+<li><strong>Reads </strong><strong><code>utils.py</code></strong> and finds the root causes: <ul>
+<li><code>filter_by_track</code> normalizes <code>"AI & ML"</code> to <code>"ai-and-ml"</code> but sessions store <code>"AI & ML"</code></li>
+<li><code>filter_by_day</code> compares string <code>"1"</code> to integer <code>1</code> (never equal)</li>
+<li><code>search_by_speaker</code> uses case-sensitive <code>in</code> operator</li>
+<li><code>session_count</code> counts from the full list instead of the filtered one</li>
+</ul>
+</li>
+<li><strong>Writes the fix</strong>: targeted edits to <code>utils.py</code></li>
+<li><strong>Runs pytest again</strong>: all 4 tests pass</li>
+<li><strong>Pushes a branch </strong><code>fix/issue-1</code> and opens a PR via GitHub MCP</li>
+</ol>
+<aside class="special"><p><strong>The agent never calls your code directly.</strong> It runs <code>pytest</code> inside the sandbox the same way a developer would on their laptop. If the tests fail after the fix, the agent iterates: it does not open a PR until all tests pass.</p>
+</aside>
+<aside class="warning"><p><strong>Run takes 3-5 minutes.</strong> The agent reasons step by step, so it is slower than running pytest yourself. This is expected. If the run exceeds 15 minutes, the sandbox auto-snapshots and the interaction ends (this rarely happens for a single-file fix).</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Review and Merge the PR" duration="3">
+        <p>When the workflow completes, check the open PRs:</p>
+<pre><code language="language-bash" class="language-bash">gh pr list
+</code></pre>
+<p>You should see one PR from <code>fix/issue-1</code>:</p>
+<pre><code language="language-text" class="language-text">#2  fix: track filter returns no sessions (closes #1)  fix/issue-1
+</code></pre>
+<p>Review the diff:</p>
+<pre><code language="language-bash" class="language-bash">gh pr diff 2
+</code></pre>
+<p>The agent should have changed <code>utils.py</code> to:</p>
+<ul>
+<li>Remove the slug normalization in <code>filter_by_track</code> (compare directly without lowercasing)</li>
+<li>Cast <code>day</code> to <code>int</code> in <code>filter_by_day</code></li>
+<li>Use <code>.lower()</code> in <code>search_by_speaker</code></li>
+<li>Replace <code>len(SESSIONS)</code> with <code>len(sessions)</code> in <code>session_count</code></li>
+</ul>
+<p>Merge it:</p>
+<pre><code language="language-bash" class="language-bash">gh pr merge 2 --squash --delete-branch
+</code></pre>
+<p>This triggers the CD workflow immediately.</p>
+<aside class="special"><p><strong>Always review before merging.</strong> The agent is autonomous but you are the last line of defense. Check that the fix is targeted: only the four buggy functions should change. If the agent modified unrelated files or added unnecessary code, close the PR and re-open the issue.</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Watch the CD Agent Deploy" duration="8">
+        <h2 is-upgraded>What the CD workflow does</h2>
+<p>Merging the PR triggers <code>deploy.yml</code>, which:</p>
+<ol type="1">
+<li>Authenticates to GCP using the service account key</li>
+<li>Runs <code>gcloud builds submit --async</code> to build the Docker image from <code>target-app/</code></li>
+<li>Polls <code>gcloud builds describe</code> every 15 seconds until the build completes</li>
+<li>Calls <code>cd-agent/deploy.py</code> with the PR URL and image URL</li>
+</ol>
+<p><code>deploy.py</code> then calls <code>client.interactions.create(agent=CD_AGENT_ID, ...)</code> and streams the CD agent&#39;s output.</p>
+<h2 is-upgraded>What the CD agent does</h2>
+<p>The CD agent follows the <code>deploy</code> skill playbook:</p>
+<ol type="1">
+<li><strong>Records the stable revision</strong>: saves the current revision name before deploying</li>
+<li><strong>Deploys with </strong><strong><code>--no-traffic</code></strong>: the new image is deployed but gets zero requests</li>
+<li><strong>Splits traffic at 10%</strong>: <code>gcloud run services update-traffic --to-revisions NEW_REV=10</code></li>
+<li><strong>Monitors for 5 minutes</strong>: queries Cloud Monitoring MCP every 60 seconds for <code>run.googleapis.com/request_count</code></li>
+<li><strong>Promotes or rolls back</strong>: <ul>
+<li>If error rate stays below 5%: <code>--to-latest</code> (promotes new revision to 100%)</li>
+<li>If error rate spikes: <code>--to-revisions STABLE_REV=100</code> (rolls back instantly)</li>
+</ul>
+</li>
+<li><strong>Closes the linked issue</strong> via GitHub MCP (posts the live URL and closes the issue)</li>
+</ol>
+<p>Watch the workflow:</p>
+<pre><code language="language-bash" class="language-bash">gh run watch
+</code></pre>
+<p>When the CD agent completes, check the linked issue is closed:</p>
+<pre><code language="language-bash" class="language-bash">gh issue list --state closed
+</code></pre>
+<p>And verify the fix is live in your browser: the track filter should now work.</p>
+<aside class="special"><p><strong>Why </strong><strong><code>--to-latest</code></strong><strong> on promotion?</strong> If you use <code>--to-revisions NEW_REV=100</code>, Cloud Run enters &#34;manual traffic mode.&#34; Future deployments create new revisions but get no traffic until you manually update the traffic config. Using <code>--to-latest</code> keeps the service in automatic mode where each new deploy automatically becomes the active revision.</p>
+</aside>
+<aside class="warning"><p><strong>If the CD agent times out</strong>: This is rare but can happen if Cloud Build takes longer than expected. Re-trigger by re-merging the PR or running <code>uv run python cd-agent/deploy.py <pr_url> <image_url></code> locally.</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Reset for Another Run" duration="2">
+        <p>After the demo completes, run the reset script to restore the broken state:</p>
+<pre><code language="language-bash" class="language-bash">bash setup/reset_demo.sh
+</code></pre>
+<p>The script:</p>
+<ol type="1">
+<li><strong>Waits</strong> for any in-progress CD workflows to finish (polls every 15 seconds)</li>
+<li><strong>Closes</strong> all open PRs (agent-opened or otherwise)</li>
+<li><strong>Restores </strong><code>target-app/utils.py</code> from <code>setup/utils_broken.py</code> (the canonical broken version)</li>
+<li><strong>Commits and pushes</strong> the reset to master</li>
+<li><strong>Redeploys</strong> the broken app to Cloud Run with <code>gcloud run deploy --source</code></li>
+</ol>
+<p>When done:</p>
+<pre><code language="language-text" class="language-text">Done. Demo is reset and ready.
+Open a new issue with the &#39;ai-resolve&#39; label to trigger the agent.
+</code></pre>
+<p>You can now repeat from Step 9 to demonstrate again.</p>
+<aside class="special"><p><strong>Why </strong><strong><code>setup/utils_broken.py</code></strong><strong>?</strong> The reset script copies from this canonical file rather than reverting with git. The agent never writes to <code>setup/</code> (it only clones <code>target-app/</code>), so <code>utils_broken.py</code> is never accidentally modified. It is always the correct broken state regardless of agent activity.</p>
+</aside>
+<aside class="warning"><p><strong>Push conflicts after CD workflow</strong>: If a CD workflow was running when you started the reset, <code>git push</code> may be rejected with a non-fast-forward error. Run <code>git pull --rebase && git push</code> to resolve.</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Clean Up" duration="2">
+        <p>Remove all Google Cloud resources to avoid ongoing charges.</p>
+<p>Delete the Cloud Run service:</p>
+<pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+
+gcloud run services delete target-app \
+  --region=us-central1 \
+  --project=$PROJECT_ID --quiet
+</code></pre>
+<p>Delete the Artifact Registry repository:</p>
+<pre><code language="language-bash" class="language-bash">gcloud artifacts repositories delete managed-issue-resolver \
+  --location=us-central1 \
+  --project=$PROJECT_ID --quiet
+</code></pre>
+<p>Delete the GCS skills bucket:</p>
+<pre><code language="language-bash" class="language-bash">GCS_SKILLS_BUCKET=$(grep GCS_SKILLS_BUCKET .env | cut -d= -f2)
+
+gcloud storage rm -r gs://$GCS_SKILLS_BUCKET
+</code></pre>
+<p>Delete the named agents:</p>
+<pre><code language="language-bash" class="language-bash">uv run python setup/delete_agents.py
+</code></pre>
+<p>Delete the service account:</p>
+<pre><code language="language-bash" class="language-bash">SA=managed-issue-resolver@$PROJECT_ID.iam.gserviceaccount.com
+
+gcloud iam service-accounts delete $SA \
+  --project=$PROJECT_ID --quiet
+</code></pre>
+<p>Verify:</p>
+<pre><code language="language-bash" class="language-bash">gcloud run services list --region=us-central1 --project=$PROJECT_ID
+gcloud storage buckets list --project=$PROJECT_ID
+</code></pre>
+<p>Expected output: empty lists or only your own pre-existing resources.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Summary" duration="2">
+        <p>Congratulations! You&#39;ve built an autonomous AI-driven issue resolution and deployment pipeline on Google Cloud.</p>
+<h2 is-upgraded>What you built</h2>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Component</p>
+</td><td colspan="1" rowspan="1"><p>Role</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><strong>Resolver Agent</strong></p>
+</td><td colspan="1" rowspan="1"><p>Reads GitHub issues, clones the repo, fixes bugs, opens PRs</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><strong>CD Agent</strong></p>
+</td><td colspan="1" rowspan="1"><p>Canary-deploys fixes, monitors error rates, promotes or rolls back</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><strong>GitHub MCP</strong></p>
+</td><td colspan="1" rowspan="1"><p>Gives both agents access to the GitHub API (no custom integration code)</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><strong>Cloud Monitoring MCP</strong></p>
+</td><td colspan="1" rowspan="1"><p>Gives the CD agent live error rate data during canary monitoring</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><strong>Cloud Logging MCP</strong></p>
+</td><td colspan="1" rowspan="1"><p>Gives the CD agent error log context when a rollback happens</p>
+</td></tr>
+</table>
+<h2 is-upgraded>Key patterns you learned</h2>
+<ol type="1">
+<li><strong>Named agents</strong>: create once, reuse across interactions; system instruction lives in <code>AGENTS.md</code></li>
+<li><strong>SKILL.md</strong>: package step-by-step playbooks in GCS-mounted Markdown files; no prompt engineering in code</li>
+<li><strong>Hosted MCP servers</strong>: connect GitHub, Cloud Monitoring, and Cloud Logging at interaction time (zero deployment)</li>
+<li><strong><code>X-MCP-Exclude-Tools</code></strong>: prevent tool name conflicts between MCP servers and the sandbox built-ins</li>
+<li><strong><code>background=True</code></strong><strong> + </strong><strong><code>store=True</code></strong>: run long agent interactions asynchronously and stream events</li>
+<li><strong>Canary traffic splitting</strong>: <code>--no-traffic</code> deploy, then <code>--to-revisions NEW_REV=10</code>, then <code>--to-latest</code> promote</li>
+<li><strong><code>setup/utils_broken.py</code></strong>: keep a canonical broken state outside the agent&#39;s working directory for reliable reset</li>
+</ol>
+<h2 is-upgraded>Next steps</h2>
+<ul>
+<li>Extend the resolver SKILL.md to handle multi-file bugs or JavaScript projects</li>
+<li>Add a second issue type (performance regression, wrong output format) and trigger it with a different label</li>
+<li>Replace the canary monitoring interval: try querying every 30 seconds for 10 minutes</li>
+<li>Explore multi-turn interactions using <code>environment=<env_id></code> + <code>previous_interaction_id=<interaction_id></code></li>
+<li>Add a Slack MCP server to post deployment notifications</li>
+</ul>
+<h2 is-upgraded>Resources</h2>
+<ul>
+<li><a href="https://ai.google.dev/gemini-api/docs/managed-agents-quickstart" target="_blank">Managed Agents API Quickstart</a></li>
+<li><a href="https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview" target="_blank">Vertex AI Agent Platform Docs</a></li>
+<li><a href="https://modelcontextprotocol.io/" target="_blank">Model Context Protocol</a></li>
+<li><a href="https://cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration" target="_blank">Cloud Run Traffic Splitting</a></li>
+<li><a href="https://github.com/googleapis/python-genai" target="_blank">google-genai Python SDK</a></li>
+</ul>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/claat-public/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/claat-public/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/claat-public/prettify.js"></script>
+  <script src="https://storage.googleapis.com/claat-public/codelab-elements.js"></script>
+  <script src="//support.google.com/inapp/api.js"></script>
+
+</body>
+</html>
