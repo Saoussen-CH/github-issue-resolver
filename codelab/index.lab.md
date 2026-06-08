@@ -94,10 +94,11 @@ agent deploys the fix automatically.
 
 ### What you'll learn
 
-- Create and configure **Named Agents** on Gemini Enterprise Agent Platform with a system instruction, GCS-mounted skill files, and built-in tools.
+- Distinguish the **Agents API** (control plane: create, configure, and manage named agents) from the **Interactions API** (data plane: invoke agents at runtime) and understand when each is called.
+- Configure the **Antigravity harness** (`base_agent: antigravity-preview-05-2026`) with built-in tools, GCS-mounted skill files, and domain-level network access controls.
+- Write **AGENTS.md** (system instruction: agent identity and constraints) and **SKILL.md** (operational playbook: step-by-step procedure) and understand why they are stored and updated differently.
 - Run long-running agent tasks with the **Managed Agents API** using background execution (`background=True`), event streaming (`stream=True`), and interaction persistence (`store=True`).
-- Attach **hosted MCP servers** (GitHub, Cloud Monitoring, Cloud Logging) to agent interactions at call time — no deployment, no custom integration code.
-- Package step-by-step agent playbooks as **SKILL.md** files stored in GCS and mounted read-only into the sandbox at runtime.
+- Attach **hosted MCP servers** (GitHub, Cloud Monitoring, Cloud Logging) to agent interactions at call time, with no deployment and no custom integration code.
 - Implement **canary traffic splitting** on Cloud Run with automated monitoring, promotion, and rollback driven entirely by an agent.
 
 ### What you'll need
@@ -301,10 +302,11 @@ bucket and agents are created.
 
 ## Understand the Architecture
 
-Duration: 08:00
+Duration: 15:00
 
-Before writing any code, let's understand what the Managed Agents API is, and the three concepts that make
-this system work: named agents, SKILL.md playbooks, and hosted MCP servers.
+Before writing any code, let's understand what the Managed Agents API is and the five concepts that make
+this system work: the Antigravity harness, the Agents API control plane, the Interactions API data plane,
+AGENTS.md vs SKILL.md, and hosted MCP servers.
 
 ### What is the Managed Agents API?
 
@@ -362,57 +364,93 @@ stream = client.interactions.create(
 )
 ```
 
-### Concept: Named agents on Gemini Enterprise Agent Platform
+### Concept: The Antigravity Harness
 
-A naive approach would call `client.models.generate_content()` for each issue, embedding the system prompt,
-tool list, and environment config in every request. That works for simple tasks, but it re-sends the full
-configuration on every call and gives you no way to reuse a pre-warmed sandbox across invocations.
-
-**Named agents** solve this. You create the agent once with its full configuration, and the platform provisions
-a fresh, isolated sandbox from that snapshot on each `client.interactions.create()` call. The agent ID is a
-stable reference that your GitHub Actions workflows use forever - you never re-specify the system prompt or
-environment config in application code.
-
-A named agent stores:
-
-- A base environment (Ubuntu, Python 3.11, Node 20, Bash, web access)
-- A **Model Runtime** (Gemini models run inside the same sandbox alongside your code)
-- A system instruction (`AGENTS.md`)
-- GCS-mounted skill files (`SKILL.md`)
-
-The execution model looks like this:
-
-```
-GitHub Actions workflow
-        │
-        │  client.interactions.create(agent="managed-issue-resolver", input=prompt, tools=[...])
-        ▼
-  Gemini Enterprise Agent Platform
-        │
-        │  provisions fresh sandbox from named agent snapshot
-        ├─ mounts SKILL.md from GCS  →  /.agent/skills/fix-issue/
-        ├─ loads Model Runtime
-        └─ starts agent with AGENTS.md system instruction
-              │
-              │  agent reasons, calls tools (bash, GitHub MCP, pytest)
-              ▼
-           streams events back  →  GitHub Actions logs
-```
-
-When you call `client.interactions.create(agent=AGENT_ID, ...)`, the platform provisions a fresh sandbox with your
-configuration already applied.
+Every managed agent runs on the **Antigravity harness** - the execution engine that powers Gemini Enterprise
+Agent Platform. The `base_agent` field in `client.agents.create()` names the harness version:
 
 ```python
+client.agents.create(
+    id="managed-issue-resolver",
+    base_agent="antigravity-preview-05-2026",   # harness version
+    ...
+)
+```
+
+The Antigravity harness is built on **Gemini 3.5** and runs in a fully managed, isolated Ubuntu environment.
+The critical design detail: the Gemini model and your code run **in the same sandbox**. There are no network
+round-trips between the model's reasoning and code execution. When the model decides to run `pytest`, it calls
+`bash` directly inside the sandbox.
+
+Pre-installed software in every sandbox:
+
+| Software | Version | Used by this project |
+|---|---|---|
+| Python | 3.11 | Running pytest, executing fix scripts |
+| Node.js | 20 | Available for JavaScript projects |
+| gcloud CLI | Latest | Cloud Run, Cloud Build, and GCS operations |
+| git | Latest | Cloning repos, pushing fix branches |
+| curl / jq | Latest | HTTP requests, JSON processing |
+| google-genai SDK | Latest | Available inside the sandbox for agent sub-calls |
+
+Built-in tools are configured at agent creation via the `tools` list:
+
+| Tool type | What the agent gains |
+|---|---|
+| `code_execution` | Run Python and bash scripts |
+| `google_search` | Web search from inside the sandbox |
+| `url_context` | Fetch and read webpage content |
+
+**Sandbox TTL:** Each sandbox auto-snapshots after 15 minutes of idle and is retained for 7 days. For
+multi-turn interactions, pass `environment=<env_id>` and `previous_interaction_id=<interaction_id>` to
+resume the same sandbox in a follow-up call.
+
+**Network access:** Network access is **disabled by default**. This project enables it with
+`"network": {"allowlist": [{"domain": "*"}]}`. In enterprise environments, restrict to specific domains
+(for example, `github.com` and `api.github.com` only) to limit the agent's blast radius.
+
+> aside positive
+>
+> **Why pin the harness version?** Using `base_agent="antigravity-preview-05-2026"` pins your agents to a
+> specific harness version. Your agents always run on the same execution environment unless you explicitly
+> recreate them with a newer `base_agent`. This makes upgrade decisions explicit and predictable for
+> production workloads.
+
+### Concept: Agents API (Control Plane) and Interactions API (Data Plane)
+
+A naive approach would configure the agent inline with every API call, re-sending the full system prompt, tool
+list, and environment config each time. That works for simple tasks but creates redundancy, blocks on
+environment provisioning on every run, and couples your application code to prompt content.
+
+The two-plane design solves this. Configuration is registered once on the control plane as a **named agent**
+and referenced by a stable ID on the data plane.
+
+**Agents API - the control plane:**
+
+The Agents API manages named agent lifecycle. These calls happen during setup, not during every workflow run:
+
+| Operation | SDK call | When |
+|---|---|---|
+| Create a named agent | `client.agents.create(id=..., ...)` | Once, during initial setup |
+| Read agent config | `client.agents.get(id=...)` | To inspect or verify configuration |
+| List all agents | `client.agents.list()` | To audit agents in the project |
+| Update config | REST PATCH with `?update_mask=system_instruction` | When changing identity or tools |
+| Delete an agent | `client.agents.delete(id=...)` | During cleanup |
+
+Most control plane calls are **long-running operations (LROs)**. `client.agents.create()` provisions a base
+environment snapshot and waits for it to be ready before returning.
+
+```python
+# Control plane: runs once in setup/create_agents.py
 from google import genai
 
 client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
 
-# One-time agent creation (setup/create_agents.py)
 client.agents.create(
     id="managed-issue-resolver",
     base_agent="antigravity-preview-05-2026",
     description="Reads a GitHub issue, fixes the bug, runs tests, opens a PR.",
-    system_instruction=agents_md_content,
+    system_instruction=agents_md_content,            # content of AGENTS.md
     tools=[
         {"type": "code_execution"},
         {"type": "google_search"},
@@ -424,47 +462,144 @@ client.agents.create(
             {
                 "type": "gcs",
                 "source": f"gs://{BUCKET}/resolver/skills/fix-issue",
-                "target": "/.agent/skills/fix-issue",
+                "target": "/.agent/skills/fix-issue",  # mount path in sandbox
             }
         ],
-        "network": {"allowlist": [{"domain": "*"}]},
+        "network": {"allowlist": [{"domain": "*"}]},   # enable outbound HTTP
     },
 )
 ```
 
-### Concept: SKILL.md - the agent's playbook
+**Interactions API - the data plane:**
 
-A naive approach would embed all step-by-step instructions in the system instruction (`AGENTS.md`). That works,
-but it bloats every sandbox with content the agent only needs at runtime, and updating the playbook means editing
-the agent's source instruction and recreating it.
+The Interactions API invokes a named agent for a specific task. Every GitHub Actions run calls this:
 
-**SKILL.md files** solve this. Each skill is a Markdown document stored in GCS and mounted read-only into the
-sandbox at `/.agent/skills/{name}/`. The agent reads it like documentation when it needs to know what steps to
-follow. Updating a playbook means uploading a new file to GCS - no code change, no agent recreation.
+```python
+# Data plane: runs on every workflow trigger in resolver/resolve.py
+stream = client.interactions.create(
+    agent=RESOLVER_AGENT_ID,   # reference to the named agent
+    input=prompt,              # the task for this interaction
+    tools=[                    # MCP servers attached at call time
+        {
+            "type": "mcp_server",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "name": "github",
+            "headers": {
+                "Authorization": f"Bearer {GH_TOKEN}",
+                "X-MCP-Exclude-Tools": "delete_file",
+            },
+        },
+    ],
+    stream=True,       # yield events as the agent works
+    background=True,   # return immediately; agent runs asynchronously
+    store=True,        # persist interaction for potential multi-turn follow-up
+)
 
-This project has two skills:
+for event in stream:
+    print(event)  # interaction.created, message.delta, tool.call, interaction.completed
+```
 
-| Skill | Local file | GCS path | Mount path |
-|---|---|---|---|
-| `fix-issue` | `target-app/.agents/skills/fix-issue/SKILL.md` | `resolver/skills/fix-issue/SKILL.md` | `/.agent/skills/fix-issue/` |
-| `deploy` | `cd-agent/SKILL.md` | `cd-agent/skills/deploy/SKILL.md` | `/.agent/skills/deploy/` |
+Key interaction parameters:
 
-Skill files use frontmatter for discovery and plain Markdown for instructions:
+| Parameter | Why this project uses it |
+|---|---|
+| `background=True` | Agent tasks run up to 15 minutes; this prevents the GitHub Actions step from timing out while waiting for a blocking response |
+| `stream=True` | Yields live events so the workflow log shows progress in real time |
+| `store=True` | Persists the interaction so a follow-up call can reference it via `previous_interaction_id` for multi-turn sessions |
+
+The named agent ID is the bridge between planes: created once on the control plane, referenced many times on
+the data plane.
+
+### Concept: AGENTS.md and SKILL.md
+
+Two Markdown files configure what an agent knows and how it behaves. They serve fundamentally different
+purposes and follow different update paths.
+
+| | AGENTS.md | SKILL.md |
+|---|---|---|
+| **What it defines** | Agent identity, role, and constraints | Step-by-step operational procedure |
+| **Passed as** | `system_instruction` at agent creation | GCS file, mounted at `/.agent/skills/{name}/` |
+| **Always in scope?** | Yes - loaded before every interaction | Yes - mounted when agent is created |
+| **Updated by** | Recreating the agent (control plane call) | Uploading a new GCS file (no code change) |
+| **Enterprise ownership** | Security and compliance teams (governance layer) | Operations teams (runbook layer) |
+
+**AGENTS.md - system instruction:**
+
+AGENTS.md defines the agent's persona, rules, and hard constraints. It is always in scope. The agent reads it
+before every interaction to know what actions are acceptable and what is off-limits.
+
+The resolver agent's `AGENTS.md` (`target-app/.agents/AGENTS.md`):
+
+```markdown
+---
+name: issue-resolver
+description: Diagnose and fix bugs in GitHub issues, verify with tests, open a PR.
+---
+
+# Issue Resolver Agent
+
+You are an expert software engineer. When given a GitHub issue, your job is to
+understand the reported problem, locate the relevant code, write a targeted fix,
+verify it with the existing test suite, and open a pull request.
+
+## Rules
+- Never create new files to apply a fix. Edit the file that contains the bug.
+- Never fix a symptom when you can fix the root cause.
+- If tests pass before your change, they must all pass after it too.
+- Do not refactor, rename, or clean up anything unrelated to the issue.
+- If you cannot confidently locate the bug, open a PR describing what you found
+  and stop - do not guess.
+```
+
+**SKILL.md - playbook:**
+
+SKILL.md defines the workflow procedure the agent follows for a specific task type. It is stored in GCS and
+mounted read-only at `/.agent/skills/{name}/` when the agent is created. The agent reads it like documentation
+when executing a task - a step-by-step runbook it follows.
+
+Updating a skill means uploading a new file to GCS. No code change, no agent recreation needed.
+
+The resolver agent's skill (`target-app/.agents/skills/fix-issue/SKILL.md`, excerpt):
 
 ```markdown
 ---
 name: fix-issue
-description: Clone a repository, diagnose a bug, fix it, and open a pull request.
+description: Clone a repo, diagnose a bug from a GitHub issue, fix it, open a PR.
 ---
 
 # Skill: Fix GitHub Issue
 
 ## Workflow
 
-1. Read the issue using the GitHub MCP server...
-2. Clone the repository...
-3. Run the existing tests to see the current failure baseline...
+1. Read the issue using the GitHub MCP server to get the title, body, and number.
+2. Clone the repository and read its structure before opening any files.
+3. Install dependencies and run the existing tests - record which ones fail.
+4. Diagnose the root cause by reading the failing test and the source it tests.
+5. Fix the root cause. Run tests again. Iterate until all tests pass.
+6. Commit, push a branch fix/issue-{number}, and open a PR via GitHub MCP.
 ```
+
+This project has two skills:
+
+| Skill | Local file | Mount path in sandbox |
+|---|---|---|
+| `fix-issue` | `target-app/.agents/skills/fix-issue/SKILL.md` | `/.agent/skills/fix-issue/SKILL.md` |
+| `deploy` | `cd-agent/SKILL.md` | `/.agent/skills/deploy/SKILL.md` |
+
+**When to put content in AGENTS.md vs SKILL.md:**
+
+Put in **AGENTS.md** anything that defines what the agent IS and what it MUST NOT do:
+- Role and expertise ("You are a senior software engineer")
+- Hard constraints ("Never modify files outside `target-app/`")
+- Output format requirements ("Always link the PR to the issue")
+
+Put in **SKILL.md** anything that defines HOW to do a specific task:
+- Step-by-step workflow (clone, install, test, fix, push)
+- Tool usage notes ("Use the GitHub MCP server for all GitHub API calls")
+- Decision logic for the task ("If tests fail after fix, iterate before opening PR")
+
+In enterprise environments, this separation maps naturally to change management: AGENTS.md changes require a
+code review and agent recreation; SKILL.md changes are a GCS upload that takes effect immediately.
 
 ### Concept: Hosted MCP servers
 
@@ -613,6 +748,58 @@ All agents OK. Ready to trigger the workflow.
 > that `GOOGLE_CLOUD_PROJECT=your-project-id` is set correctly in `.env` and that you ran the command from the
 > repo root.
 
+### Inspect the control plane code
+
+Before moving on, read the file that just ran:
+
+```bash
+cat setup/create_agents.py
+```
+
+Notice how it maps to the concepts from the architecture step:
+
+```python
+# 1. Initialize the client - Vertex AI endpoint, global region (required for Managed Agents)
+client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
+
+# 2. Read AGENTS.md from disk - this becomes the system_instruction
+RESOLVER_AGENTS_MD = Path("target-app/.agents/AGENTS.md").read_text()
+
+# 3. Call the Agents API control plane - this is the one-time setup call
+client.agents.create(
+    id="managed-issue-resolver",
+    base_agent="antigravity-preview-05-2026",        # pins the Antigravity harness version
+    system_instruction=RESOLVER_AGENTS_MD,           # AGENTS.md content: identity + constraints
+    tools=[
+        {"type": "code_execution"},                  # enables bash and Python execution
+        {"type": "google_search"},
+        {"type": "url_context"},
+    ],
+    base_environment={
+        "type": "remote",
+        "sources": [
+            {
+                "type": "gcs",
+                "source": f"gs://{GCS_SKILLS_BUCKET}/resolver/skills/fix-issue",
+                "target": "/.agent/skills/fix-issue",  # SKILL.md is readable here at runtime
+            }
+        ],
+        "network": {"allowlist": [{"domain": "*"}]},   # network off by default; * allows all
+    },
+)
+```
+
+Also read the AGENTS.md and SKILL.md files to see their actual content:
+
+```bash
+cat target-app/.agents/AGENTS.md
+cat target-app/.agents/skills/fix-issue/SKILL.md
+```
+
+Observe: AGENTS.md defines constraints ("never modify files outside target-app/"). SKILL.md defines procedure
+("1. Read the issue. 2. Clone the repo. 3. Run pytest."). These are separate files that can be updated
+independently and by different teams.
+
 ## Deploy the Target App
 
 Duration: 05:00
@@ -684,6 +871,47 @@ Bug is in \`target-app/utils.py\`." \
 ```
 
 The `ai-resolve` label triggers the workflow immediately.
+
+### Inspect the data plane code
+
+Before watching the agent run, read the script the workflow calls:
+
+```bash
+cat resolver/resolve.py
+```
+
+This is the Interactions API call - the data plane complement to `create_agents.py`:
+
+```python
+# resolver/resolve.py - called on every workflow trigger
+client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
+
+stream = client.interactions.create(
+    agent=RESOLVER_AGENT_ID,   # stable ID referencing the named agent created earlier
+    input=prompt,              # "Resolve this GitHub issue: https://github.com/.../issues/1"
+    tools=[
+        {
+            "type": "mcp_server",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "name": "github",
+            "headers": {
+                "Authorization": f"Bearer {GH_TOKEN}",
+                "X-MCP-Exclude-Tools": "delete_file",  # prevents tool name conflict
+            },
+        },
+    ],
+    stream=True,       # events stream in real time to the workflow log
+    background=True,   # call returns immediately; events are polled from the stream
+    store=True,        # persists this interaction for potential multi-turn follow-up
+)
+
+for event in stream:
+    print(str(event)[:300], flush=True)
+```
+
+Notice what is NOT here: no system prompt, no tool list for the sandbox tools, no environment config. All of
+that lives on the named agent. `resolve.py` only passes what changes per invocation: the prompt (the issue URL)
+and the runtime MCP server (with the GitHub token for this specific run).
 
 ### Watch the agent work
 
@@ -941,13 +1169,14 @@ Congratulations! You've built an autonomous AI-driven issue resolution and deplo
 
 ### Key patterns you learned
 
-1. **Named agents**: create once, reuse across interactions; system instruction lives in `AGENTS.md`
-2. **SKILL.md**: package step-by-step playbooks in GCS-mounted Markdown files; no prompt engineering in code
-3. **Hosted MCP servers**: connect GitHub, Cloud Monitoring, and Cloud Logging at interaction time (zero deployment)
-4. **`X-MCP-Exclude-Tools`**: prevent tool name conflicts between MCP servers and the sandbox built-ins
-5. **`background=True` + `store=True`**: run long agent interactions asynchronously and stream events
-6. **Canary traffic splitting**: `--no-traffic` deploy, then `--to-revisions NEW_REV=10`, then `--to-latest` promote
-7. **`setup/utils_broken.py`**: keep a canonical broken state outside the agent's working directory for reliable reset
+1. **Antigravity harness**: pin the execution engine version with `base_agent="antigravity-preview-05-2026"`; Gemini 3.5 runs inside the same sandbox as your code, with no round-trips between reasoning and execution
+2. **Two-plane architecture**: Agents API (control plane) manages named agent lifecycle; Interactions API (data plane) invokes agents at runtime - configuration is separate from invocation
+3. **AGENTS.md vs SKILL.md**: AGENTS.md is the system instruction (who the agent IS, what it MUST NOT do); SKILL.md is the playbook (what steps to follow); updated independently by different teams
+4. **Hosted MCP servers**: connect GitHub, Cloud Monitoring, and Cloud Logging at interaction time, with no deployment and no custom integration code
+5. **`X-MCP-Exclude-Tools`**: prevent tool name conflicts between MCP servers and the sandbox built-in tools
+6. **`background=True` + `store=True`**: run long agent interactions asynchronously and stream live events
+7. **Canary traffic splitting**: `--no-traffic` deploy, then `--to-revisions NEW_REV=10`, then `--to-latest` promote
+8. **`setup/utils_broken.py`**: keep a canonical broken state outside the agent's working directory for reliable reset
 
 ### Next steps
 
