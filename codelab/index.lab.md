@@ -596,8 +596,23 @@ purposes and follow different update paths.
 
 **AGENTS.md - system instruction:**
 
-AGENTS.md defines the agent's persona, rules, and hard constraints. It is always in scope. The agent reads it
-before every interaction to know what actions are acceptable and what is off-limits.
+AGENTS.md defines the agent's identity: its persona, hard constraints, and non-negotiable rules. It is loaded before every interaction and sets the boundaries the agent operates within regardless of what the task prompt says.
+
+On the Vertex AI Agent Platform, AGENTS.md reaches the agent via two paths simultaneously:
+
+1. **As `system_instruction`**: `create_agents.py` reads the local file and passes its content as the `system_instruction` string parameter to `client.agents.create()`. This is stored in the agent definition on the control plane.
+2. **As a mounted file**: `upload_skills.sh` uploads it to GCS. It is then mounted at `/.agent/AGENTS.md` inside the sandbox via `base_environment.sources`. The harness reads this path automatically at runtime.
+
+Both carry the same content. The parameter is read at agent creation; the file is read at runtime.
+
+**Path conventions:**
+
+| Context | Path |
+|---|---|
+| Local project file | `target-app/.agents/AGENTS.md` |
+| GCS object | `gs://{BUCKET}/resolver/agent-home/AGENTS.md` |
+| Sandbox (Agent Platform) | `/.agent/AGENTS.md` |
+| Sandbox (Gemini API) | `.agents/AGENTS.md` |
 
 The resolver agent's `AGENTS.md` (`target-app/.agents/AGENTS.md`):
 

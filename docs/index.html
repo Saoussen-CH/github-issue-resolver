@@ -527,7 +527,31 @@ gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -&gt; /.agent/skills/fi
 <aside class="special"><p><strong><code>system_instruction</code></strong><strong> and </strong><strong><code>/.agent/AGENTS.md</code></strong><strong> are additive.</strong> Both apply when present. This project sets both: <code>system_instruction</code> carries the content at agent creation time (stored in the agent definition), and <code>/.agent/AGENTS.md</code> is the same content mounted as a file the harness reads at runtime. You can use <code>system_instruction</code> alone for quick configuration, or both together for the full pattern.</p>
 </aside>
 <p><strong>AGENTS.md - system instruction:</strong></p>
-<p>AGENTS.md defines the agent&#39;s persona, rules, and hard constraints. It is always in scope. The agent reads it before every interaction to know what actions are acceptable and what is off-limits.</p>
+<p>AGENTS.md defines the agent&#39;s identity: its persona, hard constraints, and non-negotiable rules. It is loaded before every interaction and sets the boundaries the agent operates within regardless of what the task prompt says.</p>
+<p>On the Vertex AI Agent Platform, AGENTS.md reaches the agent via two paths simultaneously:</p>
+<ol type="1">
+<li><strong>As </strong><strong><code>system_instruction</code></strong>: <code>create_agents.py</code> reads the local file and passes its content as the <code>system_instruction</code> string parameter to <code>client.agents.create()</code>. This is stored in the agent definition on the control plane.</li>
+<li><strong>As a mounted file</strong>: <code>upload_skills.sh</code> uploads it to GCS. It is then mounted at <code>/.agent/AGENTS.md</code> inside the sandbox via <code>base_environment.sources</code>. The harness reads this path automatically at runtime.</li>
+</ol>
+<p>Both carry the same content. The parameter is read at agent creation; the file is read at runtime.</p>
+<p><strong>Path conventions:</strong></p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Context</p>
+</td><td colspan="1" rowspan="1"><p>Path</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Local project file</p>
+</td><td colspan="1" rowspan="1"><p><code>target-app/.agents/AGENTS.md</code></p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>GCS object</p>
+</td><td colspan="1" rowspan="1"><p><code>gs://{BUCKET}/resolver/agent-home/AGENTS.md</code></p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Sandbox (Agent Platform)</p>
+</td><td colspan="1" rowspan="1"><p><code>/.agent/AGENTS.md</code></p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Sandbox (Gemini API)</p>
+</td><td colspan="1" rowspan="1"><p><code>.agents/AGENTS.md</code></p>
+</td></tr>
+</table>
 <p>The resolver agent&#39;s <code>AGENTS.md</code> (<code>target-app/.agents/AGENTS.md</code>):</p>
 <pre><code language="language-markdown" class="language-markdown">---
 name: issue-resolver
