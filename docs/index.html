@@ -518,7 +518,13 @@ for event in stream:
 </td><td colspan="1" rowspan="1"><p>Operations teams (runbook layer)</p>
 </td></tr>
 </table>
-<aside class="special"><p><strong>AGENTS.md and SKILL.md follow the same GCS delivery path.</strong> Both files are uploaded to GCS and mounted under <code>/.agent/</code> via a single <code>base_environment.sources</code> entry. The Antigravity harness reads <code>/.agent/AGENTS.md</code> as the agent&#39;s system instruction at runtime, mirroring the Gemini API convention of <code>.agents/AGENTS.md</code>. AGENTS.md content is also passed as the <code>system_instruction</code> parameter at agent creation time. The API rejects two separate GCS sources that share the same top-level directory, so both files live under one <code>agent-home/</code> prefix that mounts at <code>/.agent</code>.</p>
+<aside class="warning"><p><strong>On Vertex AI Agent Platform, you cannot mount two GCS sources under the same top-level directory.</strong> Defining one source at <code>/.agent/AGENTS.md</code> and another at <code>/.agent/skills/fix-issue/</code> will fail with a 400 <code>INVALID_ARGUMENT</code> error. Both files must live in the same GCS folder prefix, mounted as a single source at <code>/.agent</code>. This project uses <code>agent-home/</code> as that prefix:</p>
+<pre><code>gs://{BUCKET}/resolver/agent-home/AGENTS.md              -&gt; /.agent/AGENTS.md
+gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -&gt; /.agent/skills/fix-issue/
+</code></pre>
+<p>The Gemini API does not have this restriction because it supports <code>"type": "inline"</code> sources, where each file is its own entry. On Vertex AI with GCS sources, one prefix, one source entry.</p>
+</aside>
+<aside class="special"><p><strong><code>system_instruction</code></strong><strong> and </strong><strong><code>/.agent/AGENTS.md</code></strong><strong> are additive.</strong> Both apply when present. This project sets both: <code>system_instruction</code> carries the content at agent creation time (stored in the agent definition), and <code>/.agent/AGENTS.md</code> is the same content mounted as a file the harness reads at runtime. You can use <code>system_instruction</code> alone for quick configuration, or both together for the full pattern.</p>
 </aside>
 <p><strong>AGENTS.md - system instruction:</strong></p>
 <p>AGENTS.md defines the agent&#39;s persona, rules, and hard constraints. It is always in scope. The agent reads it before every interaction to know what actions are acceptable and what is off-limits.</p>

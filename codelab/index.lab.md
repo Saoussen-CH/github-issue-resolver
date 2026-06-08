@@ -572,14 +572,27 @@ purposes and follow different update paths.
 | **Updated by** | Upload new GCS file then recreate the agent | Upload new GCS file then recreate the agent |
 | **Enterprise ownership** | Security and compliance teams (governance layer) | Operations teams (runbook layer) |
 
+> aside negative
+>
+> **On Vertex AI Agent Platform, you cannot mount two GCS sources under the same top-level directory.**
+> Defining one source at `/.agent/AGENTS.md` and another at `/.agent/skills/fix-issue/` will fail with a
+> 400 `INVALID_ARGUMENT` error. Both files must live in the same GCS folder prefix, mounted as a single
+> source at `/.agent`. This project uses `agent-home/` as that prefix:
+>
+> ```
+> gs://{BUCKET}/resolver/agent-home/AGENTS.md              -> /.agent/AGENTS.md
+> gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -> /.agent/skills/fix-issue/
+> ```
+>
+> The Gemini API does not have this restriction because it supports `"type": "inline"` sources, where each
+> file is its own entry. On Vertex AI with GCS sources, one prefix, one source entry.
+
 > aside positive
 >
-> **AGENTS.md and SKILL.md follow the same GCS delivery path.** Both files are uploaded to GCS and mounted
-> under `/.agent/` via a single `base_environment.sources` entry. The Antigravity harness reads
-> `/.agent/AGENTS.md` as the agent's system instruction at runtime, mirroring the Gemini API convention of
-> `.agents/AGENTS.md`. AGENTS.md content is also passed as the `system_instruction` parameter at agent
-> creation time. The API rejects two separate GCS sources that share the same top-level directory, so both
-> files live under one `agent-home/` prefix that mounts at `/.agent`.
+> **`system_instruction` and `/.agent/AGENTS.md` are additive.** Both apply when present. This project sets
+> both: `system_instruction` carries the content at agent creation time (stored in the agent definition),
+> and `/.agent/AGENTS.md` is the same content mounted as a file the harness reads at runtime. You can use
+> `system_instruction` alone for quick configuration, or both together for the full pattern.
 
 **AGENTS.md - system instruction:**
 
