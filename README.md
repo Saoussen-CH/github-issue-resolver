@@ -4,7 +4,7 @@ Autonomous GitHub issue resolution using the Google Managed Agents API on Gemini
 
 Label any issue `ai-resolve` and a managed agent reads the issue via GitHub MCP, clones the repo, writes a fix, runs the tests, and opens a PR. When the PR merges, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, reads logs via Cloud Logging MCP, then promotes or rolls back automatically.
 
-No orchestration framework. No infrastructure to manage: the Managed Agents API provisions a full sandbox (Bash, Python, git, web access) on demand. Two GitHub Actions workflows, two SKILL.md files, three hosted MCP servers, one GCS bucket for skills.
+No orchestration framework. No infrastructure to manage: the Managed Agents API provisions a full sandbox (Bash, Python, git, web access) on demand. Two GitHub Actions workflows, two agents, three hosted MCP servers, one GCS bucket for agent files.
 
 ## The app
 
@@ -80,12 +80,12 @@ resolver/
 
 cd-agent/
   deploy.py             # CD Agent: calls Managed Agents API
-  AGENTS.md             # CD agent system instruction (passed at agent creation)
-  SKILL.md              # canary deploy playbook (uploaded to GCS)
+  AGENTS.md             # CD agent identity (uploaded to GCS, mounted at /.agent/AGENTS.md)
+  SKILL.md              # canary deploy playbook (uploaded to GCS, mounted at /.agent/skills/deploy/)
   requirements.txt
 
 setup/
-  upload_skills.sh      # uploads SKILL.md files to GCS bucket
+  upload_skills.sh      # uploads AGENTS.md and SKILL.md files to GCS bucket
   create_agents.py      # creates named agents on Agent Platform (run once)
   delete_agents.py      # deletes agents (run before recreating)
   test_agents.py        # smoke-tests agents after creation
@@ -102,9 +102,9 @@ target-app/             # the conference session browser
   Dockerfile
   requirements.txt
   .agents/
-    AGENTS.md           # resolver agent system instruction (passed at agent creation)
+    AGENTS.md           # resolver agent identity (uploaded to GCS, mounted at /.agent/AGENTS.md)
     skills/fix-issue/
-      SKILL.md          # fix-issue playbook (uploaded to GCS)
+      SKILL.md          # fix-issue playbook (uploaded to GCS, mounted at /.agent/skills/fix-issue/)
 
 codelab/
   index.lab.md          # codelab source (Google Codelabs format)
@@ -258,7 +258,14 @@ Check: **Allow GitHub Actions to create and approve pull requests**
 
 ### 5. Create GCS bucket, upload skills, and create named agents
 
-SKILL.md files are stored in GCS and mounted into the agent sandbox at runtime. AGENTS.md files are used as `system_instruction` when creating the named agents. Agents are created with standard tools (`code_execution`, `google_search`, `url_context`) plus GCS skill sources. GitHub MCP and Google MCP servers are added at interaction time using `X-MCP-Exclude-Tools: delete_file` to avoid a name conflict with the sandbox's built-in `delete_file` tool.
+Both AGENTS.md and SKILL.md files are stored in GCS and mounted into the agent sandbox under `/.agent/`. The Antigravity harness auto-discovers `/.agent/AGENTS.md` as the agent's system instruction. AGENTS.md content is also passed as the `system_instruction` parameter at agent creation time. SKILL.md files are mounted at `/.agent/skills/{name}/`. A single GCS source covers both by mounting the `agent-home/` prefix at `/.agent`:
+
+```
+gs://{BUCKET}/resolver/agent-home/AGENTS.md              -> /.agent/AGENTS.md
+gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -> /.agent/skills/fix-issue/
+```
+
+Agents are created with standard tools (`code_execution`, `google_search`, `url_context`). GitHub MCP and Google MCP servers are added at interaction time using `X-MCP-Exclude-Tools: delete_file` to avoid a name conflict with the sandbox's built-in `delete_file` tool.
 
 ```bash
 PROJECT=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
@@ -289,7 +296,7 @@ Verify the agents initialise correctly before triggering the workflow:
 uv run python setup/test_agents.py
 ```
 
-Agent IDs are permanent. Re-run `upload_skills.sh` + `create_agents.py` only if you change SKILL.md files or delete the agents.
+Agent IDs are permanent. Re-run `upload_skills.sh` + `create_agents.py` only if you change AGENTS.md or SKILL.md files, or delete the agents.
 
 ### 6. Create Artifact Registry repo and deploy initial app
 
