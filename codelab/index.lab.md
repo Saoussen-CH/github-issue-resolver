@@ -94,11 +94,11 @@ agent deploys the fix automatically.
 
 ### What you'll learn
 
-- **When to use the Managed Agents API**: when your task requires an LLM with real compute — running tests, executing shell commands, calling git, making HTTP requests — not just text generation.
-- **How to use it**: create named agents with `client.agents.create()` and run long-running interactions with `client.interactions.create()` using `background=True`, `stream=True`, and `store=True`.
-- **How to configure it**: set a `system_instruction` (AGENTS.md), mount GCS-hosted playbooks (`SKILL.md`) via `base_environment.sources`, and attach built-in tools (`code_execution`, `google_search`, `url_context`).
-- **How MCP works with it**: attach hosted MCP servers (GitHub, Cloud Monitoring, Cloud Logging) at interaction time via the `tools` parameter — no deployment, no custom integration code.
-- **The advantages**: no sandbox infrastructure to manage, model and compute co-located, named agents created once and reused forever, background execution with streaming for long-running tasks.
+- Create and configure **Named Agents** on Gemini Enterprise Agent Platform with a system instruction, GCS-mounted skill files, and built-in tools.
+- Run long-running agent tasks with the **Managed Agents API** using background execution (`background=True`), event streaming (`stream=True`), and interaction persistence (`store=True`).
+- Attach **hosted MCP servers** (GitHub, Cloud Monitoring, Cloud Logging) to agent interactions at call time — no deployment, no custom integration code.
+- Package step-by-step agent playbooks as **SKILL.md** files stored in GCS and mounted read-only into the sandbox at runtime.
+- Implement **canary traffic splitting** on Cloud Run with automated monitoring, promotion, and rollback driven entirely by an agent.
 
 ### What you'll need
 
