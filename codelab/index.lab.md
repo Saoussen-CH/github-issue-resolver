@@ -891,6 +891,19 @@ Observe: AGENTS.md defines constraints ("never modify files outside target-app/"
 ("1. Read the issue. 2. Clone the repo. 3. Run pytest."). These are separate files that can be updated
 independently and by different teams.
 
+> aside positive
+>
+> **Your turn: fill in `starter/setup/create_agents.py`**
+>
+> The client initialization, file reads, function signature, and polling loop are pre-filled.
+> Open the file and fill in the three TODOs inside `client.agents.create()`:
+>
+> - **TODO 1**: Pass `system_instruction` - the variable holding the AGENTS.md content
+> - **TODO 2**: Add the `tools` list with `code_execution`, `google_search`, and `url_context`
+> - **TODO 3**: Add `base_environment` with a GCS source that mounts `agent_home_gcs_prefix` at `/.agent`, and a network allowlist that allows all domains
+>
+> Compare your result with `setup/create_agents.py` when done.
+
 ## Deploy the Target App
 
 Duration: 05:00
@@ -992,6 +1005,19 @@ Where AGENTS.md sets boundaries, SKILL.md gives the agent a step-by-step runbook
 
 AGENTS.md and SKILL.md are complementary: AGENTS.md says what the agent MUST NOT do; SKILL.md says what it MUST do, and in what order. The agent cannot deviate from either.
 
+> aside positive
+>
+> **Your turn: write the resolver AGENTS.md rules and SKILL.md workflow**
+>
+> Open `starter/target-app/.agents/AGENTS.md`. The persona section is pre-filled.
+> Fill in the `## Rules` TODO. Use the table above as a guide - each rule should prevent a specific failure.
+>
+> Then open `starter/target-app/.agents/skills/fix-issue/SKILL.md`.
+> Fill in the `## Workflow` TODO (the 6-step sequence) and the `## Critical rules` TODO
+> (the conditions that must hold before a PR is opened).
+>
+> Compare with `target-app/.agents/AGENTS.md` and `target-app/.agents/skills/fix-issue/SKILL.md` when done.
+
 ### Inspect the data plane call
 
 ```bash
@@ -1035,6 +1061,21 @@ Three design decisions worth noting:
 **Why `background=True`:** The agent takes 3-5 minutes to clone, test, fix, and push. Without `background=True`, the SDK call blocks until the agent finishes, and a blocked GitHub Actions step eventually hits its timeout. With `background=True`, the call returns immediately and events are polled from the stream while the agent works asynchronously.
 
 **Why the prompt is so short:** The prompt only carries what changes per invocation: the issue URL and the authenticated clone URL. Everything the agent needs to know about HOW to do the work is already in SKILL.md, mounted in the sandbox. The named agent design means you author the playbook once, not embed it in every API call.
+
+> aside positive
+>
+> **Your turn: fill in `starter/resolver/resolve.py`**
+>
+> The imports, environment variable reads, and client initialization are pre-filled.
+> Open the file and fill in the two TODOs inside `resolve()`:
+>
+> - **TODO 1**: Build `auth_repo_url` (replace `https://` with `https://x-access-token:{GH_TOKEN}@`)
+>   and then construct the `prompt` string with both the issue URL and the authenticated clone URL
+> - **TODO 2**: Call `client.interactions.create()` with the agent ID, the prompt, the GitHub MCP
+>   server tool (URL, headers with Authorization and X-MCP-Exclude-Tools), and
+>   `stream=True, background=True, store=True`. Then iterate the stream and print each event.
+>
+> Compare with `resolver/resolve.py` when done.
 
 ### Watch the agent work
 
@@ -1217,6 +1258,29 @@ Three MCP servers, each used at a different stage:
 | Cloud Logging | Only on rollback, to read the actual error messages | Gives the rollback comment its specific failure details |
 
 **Why the GCP token is in the prompt, not the agent definition:** The access token from `gcloud auth print-access-token` expires in 1 hour and cannot be stored at agent creation time. It is fetched fresh on each `deploy.py` run and passed in the prompt. The agent reads it and sets `CLOUDSDK_AUTH_ACCESS_TOKEN` before running any `gcloud` command.
+
+> aside positive
+>
+> **Your turn: fill in the CD agent starter files**
+>
+> **`starter/cd-agent/AGENTS.md`**: The persona and 6-step workflow are pre-filled.
+> Fill in the `## Rules` TODO - use the table above as a guide. Each rule should prevent
+> a specific unsafe deployment pattern (missing stable revision, wrong health signal, issue closed prematurely).
+>
+> **`starter/cd-agent/SKILL.md`**: The trigger and tools sections are pre-filled.
+> Fill in the `## Steps` TODO (the full canary workflow: authenticate, record stable revision,
+> deploy, split traffic, monitoring loop with verdict table, promote or rollback, report)
+> and the `## Critical rules` TODO.
+>
+> **`starter/cd-agent/deploy.py`**: Imports, env vars, GCP token fetch, and client init are pre-filled.
+> Fill in the two TODOs inside `deploy()`:
+>
+> - **TODO 1**: Build the `prompt` with the PR URL, image URL, `gcp_token`, `PROJECT_ID`, `REGION`, and `SERVICE_NAME`
+> - **TODO 2**: Call `client.interactions.create()` with the CD agent ID, the prompt, all three MCP
+>   servers (GitHub, Cloud Monitoring, Cloud Logging), and `stream=True, background=True, store=True`.
+>   Iterate the stream and print each event.
+>
+> Compare with `cd-agent/AGENTS.md`, `cd-agent/SKILL.md`, and `cd-agent/deploy.py` when done.
 
 ### What the CD agent does
 
