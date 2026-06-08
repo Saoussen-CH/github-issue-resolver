@@ -58,9 +58,17 @@ echo "  utils.py restored to buggy state"
 # 3. Commit and push
 echo ""
 cd "$ROOT"
+git fetch origin master --quiet
 git add target-app/utils.py
 if git diff --cached --quiet; then
-  echo "  utils.py already at buggy state, nothing to commit"
+  echo "  utils.py already at buggy state locally"
+  # Remote master may be ahead with the merged fix - check and force-push if so
+  if ! git diff --quiet origin/master -- target-app/utils.py 2>/dev/null; then
+    echo "  Remote has the merged fix - force pushing reset to origin/master..."
+    git push --force origin master
+  else
+    echo "  Remote already at buggy state, nothing to push"
+  fi
 else
   git commit -m "chore: reset demo - restore seeded bugs in utils.py"
   echo "  Pushing reset commit..."
