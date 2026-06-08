@@ -346,7 +346,9 @@ Your code (GitHub Actions workflow)
 | Environment snapshots | Auto-snapshot on idle, retained 7 days | You manage state persistence |
 | SDK | `google-genai` with `vertexai=True`, three lines to invoke | Framework-specific, more code |
 
-This project uses the API through the `google-genai` Python SDK:
+The Antigravity agent is also available directly via the Gemini API (`genai.Client()`, authenticated with
+`GEMINI_API_KEY`). This project uses the **Vertex AI endpoint** (`vertexai=True`) to stay within your GCP
+project's IAM, billing, and audit controls - the same `google-genai` SDK, a different authentication path.
 
 ```python
 from google import genai
@@ -377,10 +379,10 @@ client.agents.create(
 )
 ```
 
-The Antigravity harness is built on **Gemini 3.5** and runs in a fully managed, isolated Ubuntu environment.
-The critical design detail: the Gemini model and your code run **in the same sandbox**. There are no network
-round-trips between the model's reasoning and code execution. When the model decides to run `pytest`, it calls
-`bash` directly inside the sandbox.
+The Antigravity harness is built on **Gemini 3.5 Flash** and runs in a fully managed, isolated Ubuntu
+environment. The critical design detail: the Gemini model and your code run **in the same sandbox**. There are
+no network round-trips between the model's reasoning and code execution. When the model decides to run
+`pytest`, it calls `bash` directly inside the sandbox.
 
 Pre-installed software in every sandbox:
 
@@ -397,9 +399,15 @@ Built-in tools are configured at agent creation via the `tools` list:
 
 | Tool type | What the agent gains |
 |---|---|
-| `code_execution` | Run Python and bash scripts |
+| `code_execution` | Run shell commands (bash, Python, Node.js) with stdout/stderr capture |
 | `google_search` | Web search from inside the sandbox |
-| `url_context` | Fetch and read webpage content |
+| `url_context` | Fetch and read web pages |
+
+> aside positive
+>
+> **Filesystem access is not a tool type.** Read, write, edit, and list operations on files in the sandbox are
+> enabled automatically when you specify the `base_environment` parameter in `client.agents.create()`. There
+> is no `{"type": "filesystem"}` entry in the `tools` list.
 
 **Sandbox TTL:** Each sandbox auto-snapshots after 15 minutes of idle and is retained for 7 days. For
 multi-turn interactions, pass `environment=<env_id>` and `previous_interaction_id=<interaction_id>` to
@@ -1169,7 +1177,7 @@ Congratulations! You've built an autonomous AI-driven issue resolution and deplo
 
 ### Key patterns you learned
 
-1. **Antigravity harness**: pin the execution engine version with `base_agent="antigravity-preview-05-2026"`; Gemini 3.5 runs inside the same sandbox as your code, with no round-trips between reasoning and execution
+1. **Antigravity harness**: pin the execution engine version with `base_agent="antigravity-preview-05-2026"`; Gemini 3.5 Flash runs inside the same sandbox as your code, with no round-trips between reasoning and execution
 2. **Two-plane architecture**: Agents API (control plane) manages named agent lifecycle; Interactions API (data plane) invokes agents at runtime - configuration is separate from invocation
 3. **AGENTS.md vs SKILL.md**: AGENTS.md is the system instruction (who the agent IS, what it MUST NOT do); SKILL.md is the playbook (what steps to follow); updated independently by different teams
 4. **Hosted MCP servers**: connect GitHub, Cloud Monitoring, and Cloud Logging at interaction time, with no deployment and no custom integration code
