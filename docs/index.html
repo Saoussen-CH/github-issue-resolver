@@ -105,7 +105,7 @@
 <p>The agent reads the issue, finds the root cause, fixes the code, and opens a PR. You review and merge it. The CD agent deploys the fix automatically.</p>
 <h2 class="checklist" is-upgraded>What you&#39;ll learn</h2>
 <ul class="checklist">
-<li>Call the <strong>Google Managed Agents API</strong> (<code>google-genai</code> SDK with <code>vertexai=True</code>) to create and invoke agents.</li>
+<li>Use the <strong>Managed Agents API</strong> to create named agents with <code>client.agents.create()</code> and run long-running interactions with <code>background=True</code>, <code>stream=True</code>, and <code>store=True</code> to stream events as the agent works.</li>
 <li>Pass <strong>AGENTS.md</strong> as a system instruction and <strong>SKILL.md</strong> as a GCS-mounted playbook.</li>
 <li>Connect <strong>hosted MCP servers</strong> (GitHub, Cloud Monitoring, Cloud Logging) at interaction time (no deployment needed).</li>
 <li>Implement <strong>canary traffic splitting</strong> on Cloud Run with automated promotion and rollback.</li>

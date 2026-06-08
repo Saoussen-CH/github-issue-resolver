@@ -94,7 +94,7 @@ agent deploys the fix automatically.
 
 ### What you'll learn
 
-- Call the **Google Managed Agents API** (`google-genai` SDK with `vertexai=True`) to create and invoke agents.
+- Use the **Managed Agents API** to create named agents with `client.agents.create()` and run long-running interactions with `background=True`, `stream=True`, and `store=True` to stream events as the agent works.
 - Pass **AGENTS.md** as a system instruction and **SKILL.md** as a GCS-mounted playbook.
 - Connect **hosted MCP servers** (GitHub, Cloud Monitoring, Cloud Logging) at interaction time (no deployment needed).
 - Implement **canary traffic splitting** on Cloud Run with automated promotion and rollback.
