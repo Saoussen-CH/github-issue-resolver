@@ -101,14 +101,24 @@ agent deploys the fix automatically.
 
 ### What you'll need
 
-- A **Google Cloud project** with billing enabled
-- **Owner** or **Editor** IAM role
-- A **GitHub** account with a repository
-- Basic Python knowledge
+- A Google Cloud project with billing enabled
+- A GitHub account and a public GitHub repository
+- The `gcloud` CLI and `gh` CLI installed and authenticated
+- Python 3.11+ and `uv` installed
 
 ## Set Up Your Environment
 
-Duration: 07:00
+Duration: 15:00
+
+### What is Cloud Shell?
+
+Cloud Shell is a browser-based terminal with the Google Cloud SDK, `git`, `gh`, and `uv` pre-installed. Everything
+in this codelab can run in Cloud Shell or your local terminal.
+
+> aside positive
+>
+> **Using Cloud Shell?** Open [Cloud Shell](https://shell.cloud.google.com) and clone the repo from there. No local
+> SDK installation required. The `gcloud`, `git`, and `uv` tools are all pre-installed.
 
 ### Clone the repository
 
@@ -177,16 +187,98 @@ GOOGLE_CLOUD_PROJECT=your-project-id
 GCS_SKILLS_BUCKET=managed-issue-resolver-skills-your-project-id
 ```
 
-> aside negative
->
-> **Pick a globally unique bucket name.** GCS bucket names are global, so `my-bucket` will likely be taken.
-> A safe pattern: `managed-issue-resolver-skills-{PROJECT_ID}`.
-
 Install Python dependencies:
 
 ```bash
 uv sync
 ```
+
+> aside negative
+>
+> **Pick a globally unique bucket name.** GCS bucket names are global, so `my-bucket` will likely be taken.
+> A safe pattern: `managed-issue-resolver-skills-{PROJECT_ID}`.
+
+### Create a service account
+
+The GitHub Actions workflows need GCP credentials to call the Managed Agents API, build Docker images, and deploy to
+Cloud Run. Create a dedicated service account with the exact roles needed:
+
+```bash
+PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+SA=managed-issue-resolver@$PROJECT_ID.iam.gserviceaccount.com
+
+gcloud iam service-accounts create managed-issue-resolver \
+  --display-name="Managed Issue Resolver" \
+  --project=$PROJECT_ID
+```
+
+Assign roles:
+
+```bash
+for ROLE in \
+  roles/aiplatform.user \
+  roles/run.admin \
+  roles/cloudbuild.builds.editor \
+  roles/artifactregistry.writer \
+  roles/storage.admin \
+  roles/storage.objectViewer \
+  roles/mcp.toolUser \
+  roles/monitoring.admin \
+  roles/logging.admin \
+  roles/logging.viewer \
+  roles/serviceusage.serviceUsageConsumer \
+  roles/iam.serviceAccountUser; do
+  gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$SA" \
+    --role="$ROLE" --quiet
+done
+```
+
+Download the key:
+
+```bash
+gcloud iam service-accounts keys create sa-key.json \
+  --iam-account=$SA --project=$PROJECT_ID
+```
+
+> aside negative
+>
+> **Never commit `sa-key.json`.** The `.gitignore` already excludes it. Always delete the local copy after adding it
+> to GitHub Secrets in the next step.
+
+> aside positive
+>
+> **Why `roles/mcp.toolUser`?** The Cloud Monitoring and Cloud Logging MCP servers require this role to accept
+> authenticated requests. Without it, the CD agent gets `403 Forbidden` when querying error rates.
+
+### Add GitHub secrets
+
+The workflows read secrets from the repository. Add them before the first run:
+
+```bash
+PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+
+gh secret set GCP_SA_KEY < sa-key.json
+gh secret set GCP_PROJECT_ID --body "$PROJECT_ID"
+gh secret set CLOUD_RUN_REGION --body "us-central1"
+```
+
+Then delete the local key file:
+
+```bash
+rm sa-key.json
+```
+
+`GITHUB_TOKEN` is provided automatically by GitHub Actions (no action needed).
+
+> aside negative
+>
+> **Allow pull request creation.** Go to your GitHub repo: **Settings > Actions > General > Workflow permissions**.
+> Check: **Allow GitHub Actions to create and approve pull requests**. Without this, the resolver agent cannot open
+> a PR and the workflow will fail with a `403` error.
+
+The secrets `GCS_SKILLS_BUCKET`, `RESOLVER_AGENT_ID`, and `CD_AGENT_ID` will be added in the next step after the
+bucket and agents are created.
 
 ## Understand the Architecture
 
@@ -305,95 +397,11 @@ stream = client.interactions.create(
 > sandbox also provides a built-in `delete_file` tool for the local filesystem. Having two tools with the same name
 > causes a conflict that crashes the interaction. Excluding the GitHub MCP's `delete_file` avoids this.
 
-## Create a Service Account
+## Create Named Agents
 
-Duration: 05:00
+Duration: 08:00
 
-The GitHub Actions workflows need GCP credentials to call the Managed Agents API, build Docker images, and deploy to
-Cloud Run. Create a dedicated service account with the exact roles needed:
-
-```bash
-PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
-SA=managed-issue-resolver@$PROJECT_ID.iam.gserviceaccount.com
-
-gcloud iam service-accounts create managed-issue-resolver \
-  --display-name="Managed Issue Resolver" \
-  --project=$PROJECT_ID
-```
-
-Assign roles:
-
-```bash
-for ROLE in \
-  roles/aiplatform.user \
-  roles/run.admin \
-  roles/cloudbuild.builds.editor \
-  roles/artifactregistry.writer \
-  roles/storage.admin \
-  roles/storage.objectViewer \
-  roles/mcp.toolUser \
-  roles/monitoring.admin \
-  roles/logging.admin \
-  roles/logging.viewer \
-  roles/serviceusage.serviceUsageConsumer \
-  roles/iam.serviceAccountUser; do
-  gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$SA" \
-    --role="$ROLE" --quiet
-done
-```
-
-Download the key:
-
-```bash
-gcloud iam service-accounts keys create sa-key.json \
-  --iam-account=$SA --project=$PROJECT_ID
-```
-
-> aside negative
->
-> **Never commit `sa-key.json`.** The `.gitignore` already excludes it. Always delete the local copy after adding it
-> to GitHub Secrets in the next step.
-
-> aside positive
->
-> **Why `roles/mcp.toolUser`?** The Cloud Monitoring and Cloud Logging MCP servers require this role to accept
-> authenticated requests. Without it, the CD agent gets `403 Forbidden` when querying error rates.
-
-## Add GitHub Secrets
-
-Duration: 03:00
-
-The workflows read secrets from the repository. Add them before the first run:
-
-```bash
-PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
-
-gh secret set GCP_SA_KEY < sa-key.json
-gh secret set GCP_PROJECT_ID --body "$PROJECT_ID"
-gh secret set CLOUD_RUN_REGION --body "us-central1"
-```
-
-Then delete the local key file:
-
-```bash
-rm sa-key.json
-```
-
-`GITHUB_TOKEN` is provided automatically by GitHub Actions (no action needed).
-
-> aside negative
->
-> **Allow pull request creation.** Go to your GitHub repo: **Settings > Actions > General > Workflow permissions**.
-> Check: **Allow GitHub Actions to create and approve pull requests**. Without this, the resolver agent cannot open
-> a PR and the workflow will fail with a `403` error.
-
-The secrets `GCS_SKILLS_BUCKET`, `RESOLVER_AGENT_ID`, and `CD_AGENT_ID` will be added in the next two steps after
-the bucket and agents are created.
-
-## Create GCS Bucket and Upload Skills
-
-Duration: 05:00
+### Upload skills to GCS
 
 SKILL.md files are stored in GCS and mounted into the agent sandbox at runtime. Create the bucket and upload both
 files:
@@ -438,9 +446,7 @@ Note: recreate agents after changing SKILL.md files:
 > at runtime. Local edits have no effect until you upload. After uploading, you also need to recreate the agents
 > (the skill is mounted at agent creation time, not at invocation time).
 
-## Create Named Agents
-
-Duration: 05:00
+### Register agents
 
 Run `create_agents.py` once to register both named agents on Gemini Enterprise Agent Platform:
 
@@ -530,7 +536,7 @@ seeded bugs the agent will fix.
 
 ## Trigger Issue Resolution
 
-Duration: 08:00
+Duration: 10:00
 
 ### Create the `ai-resolve` label
 
@@ -603,9 +609,7 @@ While the workflow is running, the Managed Agent is executing inside a hosted sa
 > expected. If the run exceeds 15 minutes, the sandbox auto-snapshots and the interaction ends (this rarely happens
 > for a single-file fix).
 
-## Review and Merge the PR
-
-Duration: 03:00
+### Review and merge the PR
 
 When the workflow completes, check the open PRs:
 
@@ -699,11 +703,13 @@ And verify the fix is live in your browser: the track filter should now work.
 > **If the CD agent times out**: This is rare but can happen if Cloud Build takes longer than expected. Re-trigger
 > by re-merging the PR or running `uv run python cd-agent/deploy.py <pr_url> <image_url>` locally.
 
-## Reset for Another Run
+## Clean Up
 
-Duration: 02:00
+Duration: 03:00
 
-After the demo completes, run the reset script to restore the broken state:
+### Reset for another run
+
+To run the demo again without starting from scratch, use the reset script:
 
 ```bash
 bash setup/reset_demo.sh
@@ -723,7 +729,7 @@ Done. Demo is reset and ready.
 Open a new issue with the 'ai-resolve' label to trigger the agent.
 ```
 
-You can now repeat from Step 9 to demonstrate again.
+You can now repeat from the Trigger Issue Resolution step.
 
 > aside positive
 >
@@ -736,9 +742,7 @@ You can now repeat from Step 9 to demonstrate again.
 > **Push conflicts after CD workflow**: If a CD workflow was running when you started the reset, `git push` may be
 > rejected with a non-fast-forward error. Run `git pull --rebase && git push` to resolve.
 
-## Clean Up
-
-Duration: 02:00
+### Remove all resources
 
 Remove all Google Cloud resources to avoid ongoing charges.
 
@@ -783,7 +787,7 @@ gcloud iam service-accounts delete $SA \
   --project=$PROJECT_ID --quiet
 ```
 
-Verify:
+### Verify everything is removed
 
 ```bash
 gcloud run services list --region=us-central1 --project=$PROJECT_ID
