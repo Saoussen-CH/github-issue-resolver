@@ -507,8 +507,11 @@ client.agents.create(
         "sources": [
             {
                 "type": "gcs",
-                "source": f"gs://{BUCKET}/resolver/skills/fix-issue",
-                "target": "/.agent/skills/fix-issue",  # mount path in sandbox
+                # agent-home/ contains AGENTS.md and skills/ - single source
+                # required: API rejects two sources sharing the same top-level dir
+                "source": f"gs://{BUCKET}/resolver/agent-home",
+                "target": "/.agent",  # AGENTS.md -> /.agent/AGENTS.md
+                                      # skills/   -> /.agent/skills/
             }
         ],
         "network": {"allowlist": [{"domain": "*"}]},   # enable outbound HTTP
@@ -564,18 +567,19 @@ purposes and follow different update paths.
 | | AGENTS.md | SKILL.md |
 |---|---|---|
 | **What it defines** | Agent identity, role, and constraints | Step-by-step operational procedure |
-| **How it's passed** | Content read and passed as `system_instruction` parameter | GCS file, mounted at `/.agent/skills/{name}/` |
+| **How it's passed** | Uploaded to GCS, mounted at `/.agent/AGENTS.md`; also passed as `system_instruction` at creation | Uploaded to GCS, mounted at `/.agent/skills/{name}/` |
 | **Always in scope?** | Yes - loaded before every interaction | Yes - mounted when agent is created |
-| **Updated by** | Recreating the agent (control plane call) | Uploading a new GCS file (no code change) |
+| **Updated by** | Upload new GCS file then recreate the agent | Upload new GCS file (no agent recreation needed) |
 | **Enterprise ownership** | Security and compliance teams (governance layer) | Operations teams (runbook layer) |
 
 > aside positive
 >
-> **On the Vertex AI Agent Platform, `system_instruction` is a string parameter - there is no AGENTS.md
-> file auto-discovery.** `create_agents.py` reads the local `AGENTS.md` file and passes its text as
-> `system_instruction` to `client.agents.create()`. The file is not uploaded or mounted anywhere. Naming it
-> `AGENTS.md` is a project convention, not a platform requirement. The platform stores only the string you
-> provide.
+> **AGENTS.md and SKILL.md follow the same GCS delivery path.** Both files are uploaded to GCS and mounted
+> under `/.agent/` via a single `base_environment.sources` entry. The Antigravity harness reads
+> `/.agent/AGENTS.md` as the agent's system instruction at runtime, mirroring the Gemini API convention of
+> `.agents/AGENTS.md`. AGENTS.md content is also passed as the `system_instruction` parameter at agent
+> creation time. The API rejects two separate GCS sources that share the same top-level directory, so both
+> files live under one `agent-home/` prefix that mounts at `/.agent`.
 
 **AGENTS.md - system instruction:**
 
@@ -728,7 +732,7 @@ Add the bucket name as a GitHub secret:
 gh secret set GCS_SKILLS_BUCKET --body "$GCS_SKILLS_BUCKET"
 ```
 
-Upload both SKILL.md files:
+Upload both AGENTS.md and SKILL.md files:
 
 ```bash
 bash setup/upload_skills.sh
@@ -736,22 +740,25 @@ bash setup/upload_skills.sh
 
 Expected output:
 ```text
-Uploading skills to gs://managed-issue-resolver-skills-my-project ...
+Uploading agent-home directories to gs://managed-issue-resolver-skills-my-project ...
+(agent-home/ contains AGENTS.md + skills/ - single mount at /.agent)
 [gsutil copy output]
 
-Skills uploaded:
-gs://managed-issue-resolver-skills-my-project/cd-agent/skills/deploy/SKILL.md
-gs://managed-issue-resolver-skills-my-project/resolver/skills/fix-issue/SKILL.md
+Uploaded:
+gs://managed-issue-resolver-skills-my-project/cd-agent/agent-home/AGENTS.md
+gs://managed-issue-resolver-skills-my-project/cd-agent/agent-home/skills/deploy/SKILL.md
+gs://managed-issue-resolver-skills-my-project/resolver/agent-home/AGENTS.md
+gs://managed-issue-resolver-skills-my-project/resolver/agent-home/skills/fix-issue/SKILL.md
 
-Note: recreate agents after changing SKILL.md files:
+Note: recreate agents after changing SKILL.md or AGENTS.md files:
   uv run python setup/create_agents.py
 ```
 
 > aside positive
 >
-> **Re-run `upload_skills.sh` whenever you edit a SKILL.md file.** The GCS object is the live version the agent reads
-> at runtime. Local edits have no effect until you upload. After uploading, you also need to recreate the agents
-> (the skill is mounted at agent creation time, not at invocation time).
+> **Re-run `upload_skills.sh` whenever you edit AGENTS.md or SKILL.md.** Both files are read from GCS at
+> agent creation time. Local edits have no effect until you upload. After uploading, recreate the agents to
+> pick up the latest content.
 
 ### Register agents
 
@@ -834,8 +841,12 @@ client.agents.create(
         "sources": [
             {
                 "type": "gcs",
-                "source": f"gs://{GCS_SKILLS_BUCKET}/resolver/skills/fix-issue",
-                "target": "/.agent/skills/fix-issue",  # SKILL.md is readable here at runtime
+                # agent-home/ contains both AGENTS.md and skills/ subdirectory.
+                # One source is required: the API rejects multiple sources that
+                # share the same top-level target directory (/.agent).
+                "source": f"gs://{GCS_SKILLS_BUCKET}/resolver/agent-home",
+                "target": "/.agent",   # AGENTS.md -> /.agent/AGENTS.md
+                                       # skills/    -> /.agent/skills/
             }
         ],
         "network": {"allowlist": [{"domain": "*"}]},   # network off by default; * allows all
