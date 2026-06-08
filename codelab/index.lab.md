@@ -1,6 +1,6 @@
 ---
 id: managed-agents-issue-resolver
-summary: Build a fully autonomous GitHub issue resolver using the Google Managed Agents API on Gemini Enterprise Agent Platform. No orchestration framework, no infrastructure to manage.
+summary: Build a fully autonomous GitHub issue resolver using the Google Managed Agents API. The platform provisions the sandbox, runs the model, and streams results. You bring two SKILL.md files and two GitHub Actions workflows.
 status: Draft
 authors: Saoussen Chaabnia
 categories: AI, Google Cloud, Managed Agents
@@ -32,8 +32,9 @@ fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second m
 Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, then promotes or rolls back
 automatically.
 
-No orchestration framework. No LLM wrappers. No custom sandboxes. Two SKILL.md files, two GitHub Actions workflows,
-three hosted MCP servers.
+No orchestration framework. No LLM wrappers. No custom sandboxes. The Managed Agents API provisions the sandbox,
+runs the model, executes code, and streams results. You bring two SKILL.md files, two GitHub Actions workflows,
+and three hosted MCP servers.
 
 ### What you'll build
 

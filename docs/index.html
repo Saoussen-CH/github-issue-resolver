@@ -44,7 +44,7 @@
 
         <p>In this codelab you will build <strong>Managed Issue Resolver</strong>: a system that autonomously resolves GitHub issues and deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Gemini Enterprise Agent Platform.</p>
 <p>Label any issue <code>ai-resolve</code>. A managed agent reads the issue via GitHub MCP, clones the repo, reproduces the failure, fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, then promotes or rolls back automatically.</p>
-<p>No orchestration framework. No LLM wrappers. No custom sandboxes. Two SKILL.md files, two GitHub Actions workflows, three hosted MCP servers.</p>
+<p>No orchestration framework. No LLM wrappers. No custom sandboxes. The Managed Agents API provisions the sandbox, runs the model, executes code, and streams results. You bring two SKILL.md files, two GitHub Actions workflows, and three hosted MCP servers.</p>
 <h2 is-upgraded>What you&#39;ll build</h2>
 <pre><code language="language-mermaid" class="language-mermaid">flowchart TD
     A([Issue labeled ai-resolve]) --&gt; B
