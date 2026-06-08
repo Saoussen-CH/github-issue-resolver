@@ -44,7 +44,7 @@
 
         <p>In this codelab you will build <strong>Managed Issue Resolver</strong>: a system that autonomously resolves GitHub issues and deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Gemini Enterprise Agent Platform.</p>
 <p>Label any issue <code>ai-resolve</code>. A managed agent reads the issue via GitHub MCP, clones the repo, reproduces the failure, fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, then promotes or rolls back automatically.</p>
-<p>No orchestration framework. No LLM wrappers. No custom sandboxes. The Managed Agents API provisions the sandbox, runs the model, executes code, and streams results. You bring two SKILL.md files, two GitHub Actions workflows, and three hosted MCP servers.</p>
+<p>No orchestration framework. No LLM wrappers. No custom sandboxes. The Managed Agents API provisions the sandbox, runs the model, executes code, and streams results. You bring two AGENTS.md files, two SKILL.md files, two GitHub Actions workflows, and three hosted MCP servers.</p>
 <h2 is-upgraded>What you&#39;ll build</h2>
 <pre><code language="language-mermaid" class="language-mermaid">flowchart TD
     A([Issue labeled ai-resolve]) --&gt; B
@@ -590,7 +590,7 @@ description: Clone a repo, diagnose a bug from a GitHub issue, fix it, open a PR
 <li>Tool usage notes (&#34;Use the GitHub MCP server for all GitHub API calls&#34;)</li>
 <li>Decision logic for the task (&#34;If tests fail after fix, iterate before opening PR&#34;)</li>
 </ul>
-<p>In enterprise environments, this separation maps naturally to change management: AGENTS.md changes require a code review and agent recreation; SKILL.md changes are a GCS upload that takes effect immediately.</p>
+<p>In enterprise environments, this separation maps naturally to change management: both files require a GCS upload and agent recreation to take effect, but they are owned by different teams and go through different review gates: AGENTS.md by security and compliance, SKILL.md by operations.</p>
 <h2 is-upgraded>Concept: Hosted MCP servers</h2>
 <p>A naive approach would write custom Python functions to call the GitHub API, Cloud Monitoring API, and Cloud Logging API, then register them as tools. That works, but it means writing auth handling, request formatting, and error handling for every external service.</p>
 <p><strong>Hosted MCP servers</strong> solve this. MCP (Model Context Protocol) is an open standard for exposing APIs as agent-callable tools. Google and GitHub host MCP servers for their APIs - you pass the URL and auth headers at interaction time, and the agent gets a full set of typed tools with no code required.</p>
@@ -639,9 +639,9 @@ description: Clone a repo, diagnose a bug from a GitHub issue, fix it, open a PR
       </google-codelab-step>
     
       <google-codelab-step label="Create Named Agents" duration="8">
-        <p>In this step you&#39;ll create a GCS bucket, upload both SKILL.md playbooks, register the two named agents on Gemini Enterprise Agent Platform, and verify they initialize correctly before triggering any workflow.</p>
-<h2 is-upgraded>Upload skills to GCS</h2>
-<p>SKILL.md files are stored in GCS and mounted into the agent sandbox at runtime. Create the bucket and upload both files:</p>
+        <p>In this step you&#39;ll create a GCS bucket, upload AGENTS.md and SKILL.md for both agents, register the two named agents on Gemini Enterprise Agent Platform, and verify they initialize correctly before triggering any workflow.</p>
+<h2 is-upgraded>Upload agent files to GCS</h2>
+<p>Both AGENTS.md and SKILL.md files are stored in GCS and mounted into the agent sandbox at <code>/.agent/</code>. Create the bucket and upload all files:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
 GCS_SKILLS_BUCKET=$(grep GCS_SKILLS_BUCKET .env | cut -d= -f2)
 
@@ -696,7 +696,7 @@ Testing: managed-issue-cd
 ========================================
 All agents OK. Ready to trigger the workflow.
 </code></pre>
-<aside class="special"><p><strong>Agent IDs are permanent.</strong> Once created, the agent ID never changes. Re-run <code>upload_skills.sh</code> and then <code>create_agents.py</code> only if you change SKILL.md files or delete the agents. The GitHub secrets never need updating once set.</p>
+<aside class="special"><p><strong>Agent IDs are permanent.</strong> Once created, the agent ID never changes. Re-run <code>upload_skills.sh</code> and then <code>create_agents.py</code> only if you change AGENTS.md or SKILL.md files, or delete the agents. The GitHub secrets never need updating once set.</p>
 </aside>
 <aside class="warning"><p><strong>If you see </strong><strong><code>GOOGLE_CLOUD_PROJECT: KeyError</code></strong>, your <code>.env</code> file is not filled in or not being loaded. Check that <code>GOOGLE_CLOUD_PROJECT=your-project-id</code> is set correctly in <code>.env</code> and that you ran the command from the repo root.</p>
 </aside>

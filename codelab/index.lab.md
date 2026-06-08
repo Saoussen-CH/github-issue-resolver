@@ -1,6 +1,6 @@
 ---
 id: managed-agents-issue-resolver
-summary: Build a fully autonomous GitHub issue resolver using the Google Managed Agents API. The platform provisions the sandbox, runs the model, and streams results. You bring two SKILL.md files and two GitHub Actions workflows.
+summary: Build a fully autonomous GitHub issue resolver using the Google Managed Agents API. The platform provisions the sandbox, runs the model, and streams results. You bring two AGENTS.md files, two SKILL.md files, and two GitHub Actions workflows.
 status: Draft
 authors: Saoussen Chaabnia
 categories: AI, Google Cloud, Managed Agents
@@ -33,7 +33,7 @@ Run using canary traffic splitting, monitors error rates via Cloud Monitoring MC
 automatically.
 
 No orchestration framework. No LLM wrappers. No custom sandboxes. The Managed Agents API provisions the sandbox,
-runs the model, executes code, and streams results. You bring two SKILL.md files, two GitHub Actions workflows,
+runs the model, executes code, and streams results. You bring two AGENTS.md files, two SKILL.md files, two GitHub Actions workflows,
 and three hosted MCP servers.
 
 ### What you'll build
@@ -656,8 +656,7 @@ Put in **SKILL.md** anything that defines HOW to do a specific task:
 - Tool usage notes ("Use the GitHub MCP server for all GitHub API calls")
 - Decision logic for the task ("If tests fail after fix, iterate before opening PR")
 
-In enterprise environments, this separation maps naturally to change management: AGENTS.md changes require a
-code review and agent recreation; SKILL.md changes are a GCS upload that takes effect immediately.
+In enterprise environments, this separation maps naturally to change management: both files require a GCS upload and agent recreation to take effect, but they are owned by different teams and go through different review gates: AGENTS.md by security and compliance, SKILL.md by operations.
 
 ### Concept: Hosted MCP servers
 
@@ -709,13 +708,12 @@ stream = client.interactions.create(
 
 Duration: 08:00
 
-In this step you'll create a GCS bucket, upload both SKILL.md playbooks, register the two named agents on
+In this step you'll create a GCS bucket, upload AGENTS.md and SKILL.md for both agents, register the two named agents on
 Gemini Enterprise Agent Platform, and verify they initialize correctly before triggering any workflow.
 
-### Upload skills to GCS
+### Upload agent files to GCS
 
-SKILL.md files are stored in GCS and mounted into the agent sandbox at runtime. Create the bucket and upload both
-files:
+Both AGENTS.md and SKILL.md files are stored in GCS and mounted into the agent sandbox at `/.agent/`. Create the bucket and upload all files:
 
 ```bash
 PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
@@ -800,7 +798,7 @@ All agents OK. Ready to trigger the workflow.
 > aside positive
 >
 > **Agent IDs are permanent.** Once created, the agent ID never changes. Re-run `upload_skills.sh` and then
-> `create_agents.py` only if you change SKILL.md files or delete the agents. The GitHub secrets never need
+> `create_agents.py` only if you change AGENTS.md or SKILL.md files, or delete the agents. The GitHub secrets never need
 > updating once set.
 
 > aside negative
