@@ -94,11 +94,11 @@ agent deploys the fix automatically.
 
 ### What you'll learn
 
-- Use the **Managed Agents API** to create named agents with `client.agents.create()` and run long-running interactions with `background=True`, `stream=True`, and `store=True` to stream events as the agent works.
-- Pass **AGENTS.md** as a system instruction and **SKILL.md** as a GCS-mounted playbook.
-- Connect **hosted MCP servers** (GitHub, Cloud Monitoring, Cloud Logging) at interaction time (no deployment needed).
-- Implement **canary traffic splitting** on Cloud Run with automated promotion and rollback.
-- Build **repeatable demo reset** scripts that cleanly restore a broken state.
+- **When to use the Managed Agents API**: when your task requires an LLM with real compute — running tests, executing shell commands, calling git, making HTTP requests — not just text generation.
+- **How to use it**: create named agents with `client.agents.create()` and run long-running interactions with `client.interactions.create()` using `background=True`, `stream=True`, and `store=True`.
+- **How to configure it**: set a `system_instruction` (AGENTS.md), mount GCS-hosted playbooks (`SKILL.md`) via `base_environment.sources`, and attach built-in tools (`code_execution`, `google_search`, `url_context`).
+- **How MCP works with it**: attach hosted MCP servers (GitHub, Cloud Monitoring, Cloud Logging) at interaction time via the `tools` parameter — no deployment, no custom integration code.
+- **The advantages**: no sandbox infrastructure to manage, model and compute co-located, named agents created once and reused forever, background execution with streaming for long-running tasks.
 
 ### What you'll need
 

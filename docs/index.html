@@ -105,11 +105,11 @@
 <p>The agent reads the issue, finds the root cause, fixes the code, and opens a PR. You review and merge it. The CD agent deploys the fix automatically.</p>
 <h2 class="checklist" is-upgraded>What you&#39;ll learn</h2>
 <ul class="checklist">
-<li>Use the <strong>Managed Agents API</strong> to create named agents with <code>client.agents.create()</code> and run long-running interactions with <code>background=True</code>, <code>stream=True</code>, and <code>store=True</code> to stream events as the agent works.</li>
-<li>Pass <strong>AGENTS.md</strong> as a system instruction and <strong>SKILL.md</strong> as a GCS-mounted playbook.</li>
-<li>Connect <strong>hosted MCP servers</strong> (GitHub, Cloud Monitoring, Cloud Logging) at interaction time (no deployment needed).</li>
-<li>Implement <strong>canary traffic splitting</strong> on Cloud Run with automated promotion and rollback.</li>
-<li>Build <strong>repeatable demo reset</strong> scripts that cleanly restore a broken state.</li>
+<li><strong>When to use the Managed Agents API</strong>: when your task requires an LLM with real compute — running tests, executing shell commands, calling git, making HTTP requests — not just text generation.</li>
+<li><strong>How to use it</strong>: create named agents with <code>client.agents.create()</code> and run long-running interactions with <code>client.interactions.create()</code> using <code>background=True</code>, <code>stream=True</code>, and <code>store=True</code>.</li>
+<li><strong>How to configure it</strong>: set a <code>system_instruction</code> (AGENTS.md), mount GCS-hosted playbooks (<code>SKILL.md</code>) via <code>base_environment.sources</code>, and attach built-in tools (<code>code_execution</code>, <code>google_search</code>, <code>url_context</code>).</li>
+<li><strong>How MCP works with it</strong>: attach hosted MCP servers (GitHub, Cloud Monitoring, Cloud Logging) at interaction time via the <code>tools</code> parameter — no deployment, no custom integration code.</li>
+<li><strong>The advantages</strong>: no sandbox infrastructure to manage, model and compute co-located, named agents created once and reused forever, background execution with streaming for long-running tasks.</li>
 </ul>
 <h2 is-upgraded>What you&#39;ll need</h2>
 <ul>
