@@ -12,3 +12,4 @@ sa-key.json
 *.drawio
 managed-issue-resolver-architecture*
 codelab/managed-agents-issue-resolver/
+/managed-agents-issue-resolver/
