@@ -106,6 +106,20 @@ target-app/             # the conference session browser
     skills/fix-issue/
       SKILL.md          # fix-issue playbook (uploaded to GCS, mounted at /.agent/skills/fix-issue/)
 
+starter/                # workshop skeleton - participants fill in the TODOs
+  setup/
+    create_agents.py    # 3 TODOs: system_instruction, tools, base_environment
+  resolver/
+    resolve.py          # 2 TODOs: build prompt, call interactions.create
+  cd-agent/
+    AGENTS.md           # TODO: write the safe-deployment rules
+    SKILL.md            # TODO: write the canary workflow steps
+    deploy.py           # 2 TODOs: build prompt, call interactions.create with 3 MCPs
+  target-app/.agents/
+    AGENTS.md           # TODO: write the issue-resolver rules
+    skills/fix-issue/
+      SKILL.md          # TODO: write the fix workflow and critical rules
+
 codelab/
   index.lab.md          # codelab source (Google Codelabs format)
   generate.sh           # runs claat export and writes output to docs/
@@ -346,4 +360,4 @@ After the demo completes, run:
 bash setup/reset_demo.sh
 ```
 
-This waits for any in-progress CD workflows, closes open PRs, restores the 4 bugs in `utils.py`, commits and pushes to master, then redeploys the broken app to Cloud Run. Then open a new issue with the `ai-resolve` label.
+This waits for any in-progress CD workflows, closes open PRs, restores the 4 bugs in `utils.py`, then pushes to master (force-push if the agent's merged fix is ahead of local) and redeploys the broken app to Cloud Run. Then open a new issue with the `ai-resolve` label.
