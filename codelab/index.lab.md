@@ -418,18 +418,19 @@ Built-in tools are configured at agent creation via the `tools` list:
 
 > aside positive
 >
-> **Filesystem access is not a tool type.** Read, write, edit, and list operations on files in the sandbox are
-> enabled automatically when you specify the `base_environment` parameter in `client.agents.create()`. There
-> is no `{"type": "filesystem"}` entry in the `tools` list.
+> **`{"type": "filesystem"}` is a valid tool type on the Vertex AI Agent Platform.** It grants the agent
+> explicit read, write, and list access to the sandbox filesystem. This project omits it because the harness
+> already allows filesystem operations via `code_execution` (bash calls like `cat`, `ls`, `cp`). Use
+> `{"type": "filesystem"}` when you want the agent to use structured file-tool calls instead of bash.
 
 **Sandbox TTL:** Each sandbox auto-snapshots after 15 minutes of idle and is retained for 7 days. For
 multi-turn interactions, pass `environment=<env_id>` and `previous_interaction_id=<interaction_id>` to
 resume the same sandbox in a follow-up call.
 
-**Network access:** By default, sandbox environments have **unrestricted outbound network access**. Once you
-set a `network.allowlist`, only the listed domains are permitted. Our project sets
-`{"domain": "*"}` to preserve full access while keeping the network config explicit. In enterprise
-environments, replace `*` with specific domains to lock down egress:
+**Network access:** On the Vertex AI Agent Platform, **network access is disabled by default.** Every agent
+runs in a sandbox with no outbound connectivity unless you explicitly configure an allowlist. Our project sets
+`{"domain": "*"}` to permit all outbound traffic. In enterprise environments, replace `*` with specific
+domains to enforce a tight egress policy:
 
 ```python
 "network": {
@@ -570,17 +571,11 @@ purposes and follow different update paths.
 
 > aside positive
 >
-> **`system_instruction` and mounted AGENTS.md are additive.** The harness supports two ways to set
-> instructions: the `system_instruction` parameter (passed at create or interaction time) and an `AGENTS.md`
-> file mounted in the environment. Both apply when present. This project uses only the parameter approach:
-> `create_agents.py` reads `AGENTS.md` from disk and passes its content as `system_instruction`. There is no
-> separately mounted file.
-
-> aside positive
->
-> **You can override `system_instruction` and `tools` per interaction.** Named agents set defaults on the
-> control plane, but both fields can be overridden when calling `client.interactions.create()`. This lets you
-> adjust behavior for a specific run without modifying the stored agent definition.
+> **On the Vertex AI Agent Platform, `system_instruction` is a string parameter - there is no AGENTS.md
+> file auto-discovery.** `create_agents.py` reads the local `AGENTS.md` file and passes its text as
+> `system_instruction` to `client.agents.create()`. The file is not uploaded or mounted anywhere. Naming it
+> `AGENTS.md` is a project convention, not a platform requirement. The platform stores only the string you
+> provide.
 
 **AGENTS.md - system instruction:**
 
