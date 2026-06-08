@@ -110,9 +110,13 @@
       </google-codelab-step>
     
       <google-codelab-step label="Set Up Your Environment" duration="15">
-        <h2 is-upgraded>What is Cloud Shell?</h2>
-<p>Cloud Shell is a browser-based terminal with the Google Cloud SDK, <code>git</code>, <code>gh</code>, and <code>uv</code> pre-installed. Everything in this codelab can run in Cloud Shell or your local terminal.</p>
-<aside class="special"><p><strong>Using Cloud Shell?</strong> Open <a href="https://shell.cloud.google.com" target="_blank">Cloud Shell</a> and clone the repo from there. No local SDK installation required. The <code>gcloud</code>, <code>git</code>, and <code>uv</code> tools are all pre-installed.</p>
+        <p>For this codelab, you&#39;ll use Cloud Shell or your local terminal. By the end of this step you&#39;ll have the repo cloned, your GCP project configured, all required APIs enabled, a <code>.env</code> file filled in, a service account created, and GitHub secrets set.</p>
+<h2 is-upgraded>What is Cloud Shell?</h2>
+<p>Cloud Shell is a free browser-based Linux terminal with <code>gcloud</code>, <code>git</code>, <code>gh</code>, <code>uv</code>, and Python pre-installed. You don&#39;t need to install anything locally to complete this codelab.</p>
+<p>To open Cloud Shell, click the terminal icon in the top-right toolbar of the GCP Console. When prompted, click <strong>Authorize</strong> to allow Cloud Shell to make Google Cloud API calls.</p>
+<aside class="warning"><p><strong>If Cloud Shell goes idle for 20 minutes it will disconnect.</strong> Reconnect and <code>cd managed-issue-resolver</code> to return to the working directory.</p>
+</aside>
+<aside class="special"><p><strong>Prefer your local terminal?</strong> You&#39;ll need <code>gcloud</code> CLI, <code>gh</code> CLI, <code>uv</code>, and Python 3.11+ installed. Everything else in this codelab runs identically.</p>
 </aside>
 <h2 is-upgraded>Clone the repository</h2>
 <pre><code language="language-bash" class="language-bash">git clone https://github.com/Saoussen-CH/managed-issue-resolver.git
@@ -124,6 +128,8 @@ cd managed-issue-resolver
 <pre><code language="language-bash" class="language-bash">gcloud auth login
 gcloud auth application-default login
 </code></pre>
+<aside class="special"><p><strong>Why two auth commands? </strong><code>gcloud auth login</code> authenticates the CLI. <code>gcloud auth application-default login</code> creates credentials that Python scripts (like <code>create_agents.py</code> and <code>deploy.py</code>) use to call Google Cloud APIs. Without the second command, the agent SDK fails with a missing credentials error at runtime.</p>
+</aside>
 <p>Then set your project:</p>
 <pre><code language="language-bash" class="language-bash">export PROJECT_ID=$(gcloud config get-value project)
 export REGION=&#34;us-central1&#34;
@@ -214,15 +220,33 @@ gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34;
       </google-codelab-step>
     
       <google-codelab-step label="Understand the Architecture" duration="5">
-        <p>Before running any scripts, let&#39;s understand the two core concepts that make this system work.</p>
-<h2 is-upgraded>Named agents on Gemini Enterprise Agent Platform</h2>
-<p>The system uses two <strong>named agents</strong> created once via the API and reused across invocations. A named agent is a persistent configuration that stores:</p>
+        <p>Before running any scripts, let&#39;s understand the three concepts that make this system work: named agents, SKILL.md playbooks, and hosted MCP servers.</p>
+<h2 is-upgraded>Concept: Named agents on Gemini Enterprise Agent Platform</h2>
+<p>A naive approach would call <code>client.models.generate_content()</code> for each issue, embedding the system prompt, tool list, and environment config in every request. That works for simple tasks, but it re-sends the full configuration on every call and gives you no way to reuse a pre-warmed sandbox across invocations.</p>
+<p><strong>Named agents</strong> solve this. You create the agent once with its full configuration, and the platform provisions a fresh, isolated sandbox from that snapshot on each <code>client.interactions.create()</code> call. The agent ID is a stable reference that your GitHub Actions workflows use forever - you never re-specify the system prompt or environment config in application code.</p>
+<p>A named agent stores:</p>
 <ul>
 <li>A base environment (Ubuntu, Python 3.11, Node 20, Bash, web access)</li>
 <li>A <strong>Model Runtime</strong> (Gemini models run inside the same sandbox alongside your code)</li>
 <li>A system instruction (<code>AGENTS.md</code>)</li>
 <li>GCS-mounted skill files (<code>SKILL.md</code>)</li>
 </ul>
+<p>The execution model looks like this:</p>
+<pre><code>GitHub Actions workflow
+        │
+        │  client.interactions.create(agent=&#34;managed-issue-resolver&#34;, input=prompt, tools=[...])
+        ▼
+  Gemini Enterprise Agent Platform
+        │
+        │  provisions fresh sandbox from named agent snapshot
+        ├─ mounts SKILL.md from GCS  →  /.agent/skills/fix-issue/
+        ├─ loads Model Runtime
+        └─ starts agent with AGENTS.md system instruction
+              │
+              │  agent reasons, calls tools (bash, GitHub MCP, pytest)
+              ▼
+           streams events back  →  GitHub Actions logs
+</code></pre>
 <p>When you call <code>client.interactions.create(agent=AGENT_ID, ...)</code>, the platform provisions a fresh sandbox with your configuration already applied.</p>
 <pre><code language="language-python" class="language-python">from google import genai
 
@@ -252,8 +276,9 @@ client.agents.create(
     },
 )
 </code></pre>
-<h2 is-upgraded>SKILL.md: the agent&#39;s playbook</h2>
-<p>The <code>SKILL.md</code> file is a Markdown document uploaded to GCS. When the agent is invoked, it is mounted read-only in the sandbox at <code>/.agent/skills/{name}/</code>. The agent reads it to understand what steps to take.</p>
+<h2 is-upgraded>Concept: SKILL.md - the agent&#39;s playbook</h2>
+<p>A naive approach would embed all step-by-step instructions in the system instruction (<code>AGENTS.md</code>). That works, but it bloats every sandbox with content the agent only needs at runtime, and updating the playbook means editing the agent&#39;s source instruction and recreating it.</p>
+<p><strong>SKILL.md files</strong> solve this. Each skill is a Markdown document stored in GCS and mounted read-only into the sandbox at <code>/.agent/skills/{name}/</code>. The agent reads it like documentation when it needs to know what steps to follow. Updating a playbook means uploading a new file to GCS - no code change, no agent recreation.</p>
 <p>This project has two skills:</p>
 <table>
 <tr><td colspan="1" rowspan="1"><p>Skill</p>
@@ -286,8 +311,10 @@ description: Clone a repository, diagnose a bug, fix it, and open a pull request
 2. Clone the repository...
 3. Run the existing tests to see the current failure baseline...
 </code></pre>
-<h2 is-upgraded>Hosted MCP servers</h2>
-<p>MCP (Model Context Protocol) servers expose external APIs as tools the agent can call. This project uses three <strong>hosted</strong> MCP servers (no deployment required):</p>
+<h2 is-upgraded>Concept: Hosted MCP servers</h2>
+<p>A naive approach would write custom Python functions to call the GitHub API, Cloud Monitoring API, and Cloud Logging API, then register them as tools. That works, but it means writing auth handling, request formatting, and error handling for every external service.</p>
+<p><strong>Hosted MCP servers</strong> solve this. MCP (Model Context Protocol) is an open standard for exposing APIs as agent-callable tools. Google and GitHub host MCP servers for their APIs - you pass the URL and auth headers at interaction time, and the agent gets a full set of typed tools with no code required.</p>
+<p>This project uses three hosted MCP servers (no deployment required):</p>
 <table>
 <tr><td colspan="1" rowspan="1"><p>Server</p>
 </td><td colspan="1" rowspan="1"><p>URL</p>
@@ -332,7 +359,8 @@ description: Clone a repository, diagnose a bug, fix it, and open a pull request
       </google-codelab-step>
     
       <google-codelab-step label="Create Named Agents" duration="8">
-        <h2 is-upgraded>Upload skills to GCS</h2>
+        <p>In this step you&#39;ll create a GCS bucket, upload both SKILL.md playbooks, register the two named agents on Gemini Enterprise Agent Platform, and verify they initialize correctly before triggering any workflow.</p>
+<h2 is-upgraded>Upload skills to GCS</h2>
 <p>SKILL.md files are stored in GCS and mounted into the agent sandbox at runtime. Create the bucket and upload both files:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
 GCS_SKILLS_BUCKET=$(grep GCS_SKILLS_BUCKET .env | cut -d= -f2)
@@ -394,7 +422,8 @@ All agents OK. Ready to trigger the workflow.
       </google-codelab-step>
     
       <google-codelab-step label="Deploy the Target App" duration="5">
-        <p>Create an Artifact Registry repository to store the Docker images that Cloud Build will produce:</p>
+        <p>The target app is a conference session browser with four seeded bugs. You&#39;ll deploy the broken version to Cloud Run now so the CD agent has a live service to update when the resolver agent&#39;s fix is merged.</p>
+<p>Create an Artifact Registry repository to store the Docker images that Cloud Build will produce:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
 
 gcloud artifacts repositories create managed-issue-resolver \
@@ -420,7 +449,8 @@ gcloud artifacts repositories create managed-issue-resolver \
       </google-codelab-step>
     
       <google-codelab-step label="Trigger Issue Resolution" duration="10">
-        <h2 is-upgraded>Create the <code>ai-resolve</code> label</h2>
+        <p>The resolver workflow fires when a GitHub issue gets the <code>ai-resolve</code> label. You&#39;ll create the label, open an issue describing the bug, watch the agent fix it, then review and merge the PR it opens.</p>
+<h2 is-upgraded>Create the <code>ai-resolve</code> label</h2>
 <p>The GitHub Actions <code>resolve.yml</code> workflow fires when an issue is labeled <code>ai-resolve</code>:</p>
 <pre><code language="language-bash" class="language-bash">gh label create ai-resolve --color &#34;0075ca&#34; --description &#34;Trigger AI issue resolution&#34;
 </code></pre>
@@ -497,7 +527,8 @@ Bug is in \`target-app/utils.py\`.&#34; \
       </google-codelab-step>
     
       <google-codelab-step label="Watch the CD Agent Deploy" duration="8">
-        <h2 is-upgraded>What the CD workflow does</h2>
+        <p>Merging the PR triggers the CD workflow. The CD agent follows a canary deployment strategy: deploy at 10% traffic, monitor error rates for 5 minutes via Cloud Monitoring MCP, then promote or roll back automatically.</p>
+<h2 is-upgraded>What the CD workflow does</h2>
 <p>Merging the PR triggers <code>deploy.yml</code>, which:</p>
 <ol type="1">
 <li>Authenticates to GCP using the service account key</li>

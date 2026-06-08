@@ -110,15 +110,27 @@ agent deploys the fix automatically.
 
 Duration: 15:00
 
+For this codelab, you'll use Cloud Shell or your local terminal. By the end of this step you'll have the repo
+cloned, your GCP project configured, all required APIs enabled, a `.env` file filled in, a service account
+created, and GitHub secrets set.
+
 ### What is Cloud Shell?
 
-Cloud Shell is a browser-based terminal with the Google Cloud SDK, `git`, `gh`, and `uv` pre-installed. Everything
-in this codelab can run in Cloud Shell or your local terminal.
+Cloud Shell is a free browser-based Linux terminal with `gcloud`, `git`, `gh`, `uv`, and Python pre-installed.
+You don't need to install anything locally to complete this codelab.
+
+To open Cloud Shell, click the terminal icon in the top-right toolbar of the GCP Console. When prompted, click
+**Authorize** to allow Cloud Shell to make Google Cloud API calls.
+
+> aside negative
+>
+> **If Cloud Shell goes idle for 20 minutes it will disconnect.** Reconnect and `cd managed-issue-resolver` to
+> return to the working directory.
 
 > aside positive
 >
-> **Using Cloud Shell?** Open [Cloud Shell](https://shell.cloud.google.com) and clone the repo from there. No local
-> SDK installation required. The `gcloud`, `git`, and `uv` tools are all pre-installed.
+> **Prefer your local terminal?** You'll need `gcloud` CLI, `gh` CLI, `uv`, and Python 3.11+ installed.
+> Everything else in this codelab runs identically.
 
 ### Clone the repository
 
@@ -138,6 +150,12 @@ cd managed-issue-resolver
 gcloud auth login
 gcloud auth application-default login
 ```
+
+> aside positive
+>
+> **Why two auth commands?** `gcloud auth login` authenticates the CLI. `gcloud auth application-default login`
+> creates credentials that Python scripts (like `create_agents.py` and `deploy.py`) use to call Google Cloud APIs.
+> Without the second command, the agent SDK fails with a missing credentials error at runtime.
 
 Then set your project:
 
@@ -284,17 +302,45 @@ bucket and agents are created.
 
 Duration: 05:00
 
-Before running any scripts, let's understand the two core concepts that make this system work.
+Before running any scripts, let's understand the three concepts that make this system work: named agents,
+SKILL.md playbooks, and hosted MCP servers.
 
-### Named agents on Gemini Enterprise Agent Platform
+### Concept: Named agents on Gemini Enterprise Agent Platform
 
-The system uses two **named agents** created once via the API and reused across invocations. A named agent is a
-persistent configuration that stores:
+A naive approach would call `client.models.generate_content()` for each issue, embedding the system prompt,
+tool list, and environment config in every request. That works for simple tasks, but it re-sends the full
+configuration on every call and gives you no way to reuse a pre-warmed sandbox across invocations.
+
+**Named agents** solve this. You create the agent once with its full configuration, and the platform provisions
+a fresh, isolated sandbox from that snapshot on each `client.interactions.create()` call. The agent ID is a
+stable reference that your GitHub Actions workflows use forever - you never re-specify the system prompt or
+environment config in application code.
+
+A named agent stores:
 
 - A base environment (Ubuntu, Python 3.11, Node 20, Bash, web access)
 - A **Model Runtime** (Gemini models run inside the same sandbox alongside your code)
 - A system instruction (`AGENTS.md`)
 - GCS-mounted skill files (`SKILL.md`)
+
+The execution model looks like this:
+
+```
+GitHub Actions workflow
+        │
+        │  client.interactions.create(agent="managed-issue-resolver", input=prompt, tools=[...])
+        ▼
+  Gemini Enterprise Agent Platform
+        │
+        │  provisions fresh sandbox from named agent snapshot
+        ├─ mounts SKILL.md from GCS  →  /.agent/skills/fix-issue/
+        ├─ loads Model Runtime
+        └─ starts agent with AGENTS.md system instruction
+              │
+              │  agent reasons, calls tools (bash, GitHub MCP, pytest)
+              ▼
+           streams events back  →  GitHub Actions logs
+```
 
 When you call `client.interactions.create(agent=AGENT_ID, ...)`, the platform provisions a fresh sandbox with your
 configuration already applied.
@@ -329,10 +375,15 @@ client.agents.create(
 )
 ```
 
-### SKILL.md: the agent's playbook
+### Concept: SKILL.md - the agent's playbook
 
-The `SKILL.md` file is a Markdown document uploaded to GCS. When the agent is invoked, it is mounted read-only in
-the sandbox at `/.agent/skills/{name}/`. The agent reads it to understand what steps to take.
+A naive approach would embed all step-by-step instructions in the system instruction (`AGENTS.md`). That works,
+but it bloats every sandbox with content the agent only needs at runtime, and updating the playbook means editing
+the agent's source instruction and recreating it.
+
+**SKILL.md files** solve this. Each skill is a Markdown document stored in GCS and mounted read-only into the
+sandbox at `/.agent/skills/{name}/`. The agent reads it like documentation when it needs to know what steps to
+follow. Updating a playbook means uploading a new file to GCS - no code change, no agent recreation.
 
 This project has two skills:
 
@@ -358,10 +409,17 @@ description: Clone a repository, diagnose a bug, fix it, and open a pull request
 3. Run the existing tests to see the current failure baseline...
 ```
 
-### Hosted MCP servers
+### Concept: Hosted MCP servers
 
-MCP (Model Context Protocol) servers expose external APIs as tools the agent can call. This project uses three
-**hosted** MCP servers (no deployment required):
+A naive approach would write custom Python functions to call the GitHub API, Cloud Monitoring API, and Cloud
+Logging API, then register them as tools. That works, but it means writing auth handling, request formatting,
+and error handling for every external service.
+
+**Hosted MCP servers** solve this. MCP (Model Context Protocol) is an open standard for exposing APIs as
+agent-callable tools. Google and GitHub host MCP servers for their APIs - you pass the URL and auth headers at
+interaction time, and the agent gets a full set of typed tools with no code required.
+
+This project uses three hosted MCP servers (no deployment required):
 
 | Server | URL | Used by |
 |---|---|---|
@@ -400,6 +458,9 @@ stream = client.interactions.create(
 ## Create Named Agents
 
 Duration: 08:00
+
+In this step you'll create a GCS bucket, upload both SKILL.md playbooks, register the two named agents on
+Gemini Enterprise Agent Platform, and verify they initialize correctly before triggering any workflow.
 
 ### Upload skills to GCS
 
@@ -499,6 +560,9 @@ All agents OK. Ready to trigger the workflow.
 
 Duration: 05:00
 
+The target app is a conference session browser with four seeded bugs. You'll deploy the broken version to Cloud
+Run now so the CD agent has a live service to update when the resolver agent's fix is merged.
+
 Create an Artifact Registry repository to store the Docker images that Cloud Build will produce:
 
 ```bash
@@ -537,6 +601,9 @@ seeded bugs the agent will fix.
 ## Trigger Issue Resolution
 
 Duration: 10:00
+
+The resolver workflow fires when a GitHub issue gets the `ai-resolve` label. You'll create the label, open an
+issue describing the bug, watch the agent fix it, then review and merge the PR it opens.
 
 ### Create the `ai-resolve` label
 
@@ -652,6 +719,9 @@ This triggers the CD workflow immediately.
 ## Watch the CD Agent Deploy
 
 Duration: 08:00
+
+Merging the PR triggers the CD workflow. The CD agent follows a canary deployment strategy: deploy at 10%
+traffic, monitor error rates for 5 minutes via Cloud Monitoring MCP, then promote or roll back automatically.
 
 ### What the CD workflow does
 
