@@ -963,46 +963,78 @@ Bug is in \`target-app/utils.py\`." \
 
 The `ai-resolve` label triggers the workflow immediately.
 
-### Inspect the data plane code
+### Inspect the resolver agent configuration
 
-Before watching the agent run, read the script the workflow calls:
+Before watching the run, understand what the agent knows and how it was designed.
+
+**AGENTS.md sets the constraints** (`target-app/.agents/AGENTS.md`):
+
+The rules are precise because the agent has unrestricted code execution. Without them it would find plausible-but-wrong fixes: creating new helper functions instead of editing the broken one, patching symptoms rather than causes, or refactoring unrelated code and inflating the diff.
+
+| Rule | What failure it prevents |
+|---|---|
+| Never create new files to apply a fix | Keeps the PR diff minimal and reviewable |
+| Never fix a symptom when you can fix the root cause | No band-aid patches that pass tests but leave bugs in production |
+| Tests must all pass before opening a PR | Hard quality gate - the agent iterates, not you |
+| Do not refactor anything unrelated to the issue | One PR, one fix - clean history |
+| If you cannot locate the bug, describe what you found and stop | Fail-safe against silent partial fixes |
+
+**SKILL.md defines the workflow** (`target-app/.agents/skills/fix-issue/SKILL.md`):
+
+Where AGENTS.md sets boundaries, SKILL.md gives the agent a step-by-step runbook mounted at `/.agent/skills/fix-issue/`. The agent reads it as documentation for this class of task:
+
+1. Read the issue via GitHub MCP (understand the reported behavior)
+2. Clone and read the repo structure before opening any files (orientation before action)
+3. Install dependencies and run all tests (record the failure baseline)
+4. Diagnose from the failing tests (evidence-based, not guess-based)
+5. Fix the root cause - run tests again, iterate until all pass
+6. Commit, push a branch, open a PR via GitHub MCP
+
+AGENTS.md and SKILL.md are complementary: AGENTS.md says what the agent MUST NOT do; SKILL.md says what it MUST do, and in what order. The agent cannot deviate from either.
+
+### Inspect the data plane call
 
 ```bash
 cat resolver/resolve.py
 ```
 
-This is the Interactions API call - the data plane complement to `create_agents.py`:
-
 ```python
-# resolver/resolve.py - called on every workflow trigger
-client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
+auth_repo_url = REPO_URL.replace("https://", f"https://x-access-token:{GH_TOKEN}@")
+
+prompt = (
+    f"Resolve this GitHub issue: {issue_url}\n"
+    f"Repository clone URL (authenticated): {auth_repo_url}\n\n"
+    f"Use the GitHub MCP server to read the issue and open the PR. "
+    f"Use the authenticated clone URL for git clone and git push."
+)
 
 stream = client.interactions.create(
-    agent=RESOLVER_AGENT_ID,   # stable ID referencing the named agent created earlier
-    input=prompt,              # "Resolve this GitHub issue: https://github.com/.../issues/1"
+    agent=RESOLVER_AGENT_ID,  # named agent carries all config: AGENTS.md, SKILL.md, tools
+    input=prompt,             # only the issue URL and auth clone URL change per run
     tools=[
         {
             "type": "mcp_server",
             "url": "https://api.githubcopilot.com/mcp/",
             "name": "github",
             "headers": {
-                "Authorization": f"Bearer {GH_TOKEN}",
-                "X-MCP-Exclude-Tools": "delete_file",  # prevents tool name conflict
+                "Authorization": f"Bearer {GH_TOKEN}",  # per-run token, not in agent definition
+                "X-MCP-Exclude-Tools": "delete_file",   # removes name conflict with sandbox tool
             },
         },
     ],
-    stream=True,       # events stream in real time to the workflow log
-    background=True,   # call returns immediately; events are polled from the stream
-    store=True,        # persists this interaction for potential multi-turn follow-up
+    stream=True,     # yields live events to the GitHub Actions log
+    background=True, # returns immediately - agent runs for minutes, Actions step would timeout
+    store=True,      # persists interaction so a follow-up call can resume it
 )
-
-for event in stream:
-    print(str(event)[:300], flush=True)
 ```
 
-Notice what is NOT here: no system prompt, no tool list for the sandbox tools, no environment config. All of
-that lives on the named agent. `resolve.py` only passes what changes per invocation: the prompt (the issue URL)
-and the runtime MCP server (with the GitHub token for this specific run).
+Three design decisions worth noting:
+
+**Why GitHub MCP is at interaction time, not in the agent definition:** The token comes from the GitHub Actions runner and is different for every repository and every run. It cannot be baked into the named agent at creation time.
+
+**Why `background=True`:** The agent takes 3-5 minutes to clone, test, fix, and push. Without `background=True`, the SDK call blocks until the agent finishes, and a blocked GitHub Actions step eventually hits its timeout. With `background=True`, the call returns immediately and events are polled from the stream while the agent works asynchronously.
+
+**Why the prompt is so short:** The prompt only carries what changes per invocation: the issue URL and the authenticated clone URL. Everything the agent needs to know about HOW to do the work is already in SKILL.md, mounted in the sandbox. The named agent design means you author the playbook once, not embed it in every API call.
 
 ### Watch the agent work
 
@@ -1110,18 +1142,94 @@ Merging the PR triggers `deploy.yml`, which:
 
 `deploy.py` then calls `client.interactions.create(agent=CD_AGENT_ID, ...)` and streams the CD agent's output.
 
+### Inspect the CD agent configuration
+
+**AGENTS.md sets the constraints** (`cd-agent/AGENTS.md`):
+
+The CD agent's rules exist to prevent unsafe deployment patterns:
+
+| Rule | What failure it prevents |
+|---|---|
+| Always record the stable revision before deploying | Rollback is impossible without it - there is no "undo" on Cloud Run traffic splits |
+| Never use `gcloud logging read` for health decisions | Log ingestion has 30-90 second delay and no denominator - logs cannot tell you error rate |
+| Never close the issue on rollback | The fix did not reach production - the issue stays open for investigation |
+| If no linked issue found in PR, skip GitHub steps | Defensive: not every PR has an issue reference |
+
+**SKILL.md defines the canary workflow** (`cd-agent/SKILL.md`):
+
+The playbook is mounted at `/.agent/skills/deploy/`. It specifies the exact verdict table the agent applies at each monitoring check:
+
+| Condition | Verdict |
+|---|---|
+| `canary_total < 5` | HOLD (not enough traffic yet) |
+| `canary_error_rate > 0.05` AND `> stable_error_rate × 2` | ROLLBACK |
+| `canary_error_rate <= 0.05` | OK |
+| Two consecutive HOLDs | ROLLBACK (no traffic reaching canary) |
+
+The agent runs 5 checks, 60 seconds apart. ROLLBACK triggers immediately on any check. Promotion requires all 5 checks to pass.
+
+**Inspect the data plane call** (`cd-agent/deploy.py`):
+
+```bash
+cat cd-agent/deploy.py
+```
+
+```python
+# GCP access token fetched at call time - expires and rotates, cannot be stored in agent
+gcp_token = subprocess.check_output(["gcloud", "auth", "print-access-token"]).decode().strip()
+
+stream = client.interactions.create(
+    agent=CD_AGENT_ID,
+    input=prompt,   # PR URL, image URL, project, region, service - everything that changes per run
+    tools=[
+        {
+            "type": "mcp_server",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "name": "github",
+            "headers": {"Authorization": f"Bearer {GH_TOKEN}",
+                        "X-MCP-Exclude-Tools": "delete_file"},
+        },
+        {
+            "type": "mcp_server",
+            "url": "https://monitoring.googleapis.com/mcp",
+            "name": "cloudmonitoring",
+            "headers": {"Authorization": f"Bearer {gcp_token}"},  # GCP token, not API key
+        },
+        {
+            "type": "mcp_server",
+            "url": "https://logging.googleapis.com/mcp",
+            "name": "cloudlogging",
+            "headers": {"Authorization": f"Bearer {gcp_token}"},  # used only on rollback
+        },
+    ],
+    stream=True,
+    background=True,
+    store=True,
+)
+```
+
+Three MCP servers, each used at a different stage:
+
+| MCP server | When the agent uses it | Why not bash |
+|---|---|---|
+| GitHub | Read PR body (extract issue number), post comment, close issue | GitHub API calls need auth - MCP injects it without storing tokens in the sandbox |
+| Cloud Monitoring | Every 60-second health check during the 5-minute canary window | Returns aggregated metrics with a denominator; `gcloud logging read` cannot compute error rate |
+| Cloud Logging | Only on rollback, to read the actual error messages | Gives the rollback comment its specific failure details |
+
+**Why the GCP token is in the prompt, not the agent definition:** The access token from `gcloud auth print-access-token` expires in 1 hour and cannot be stored at agent creation time. It is fetched fresh on each `deploy.py` run and passed in the prompt. The agent reads it and sets `CLOUDSDK_AUTH_ACCESS_TOKEN` before running any `gcloud` command.
+
 ### What the CD agent does
 
-The CD agent follows the `deploy` skill playbook:
+The CD agent follows the `deploy` skill playbook end-to-end:
 
-1. **Records the stable revision**: saves the current revision name before deploying
-2. **Deploys with `--no-traffic`**: the new image is deployed but gets zero requests
+1. **Records the stable revision**: saves the current Cloud Run revision name before touching anything
+2. **Deploys with `--no-traffic`**: new image lands in Cloud Run but receives zero requests
 3. **Splits traffic at 10%**: `gcloud run services update-traffic --to-revisions NEW_REV=10`
-4. **Monitors for 5 minutes**: queries Cloud Monitoring MCP every 60 seconds for `run.googleapis.com/request_count`
+4. **Monitors for 5 minutes**: 5 checks via Cloud Monitoring MCP, 60 seconds apart, applying the verdict table
 5. **Promotes or rolls back**:
-   - If error rate stays below 5%: `--to-latest` (promotes new revision to 100%)
-   - If error rate spikes: `--to-revisions STABLE_REV=100` (rolls back instantly)
-6. **Closes the linked issue** via GitHub MCP (posts the live URL and closes the issue)
+   - All checks OK: `--to-latest` (new revision to 100%, service stays in automatic mode)
+   - Any ROLLBACK: `--to-revisions STABLE_REV=100` (instant rollback, issue stays open)
+6. **Closes the linked issue** via GitHub MCP with the revision name and live URL
 
 Watch the workflow:
 
