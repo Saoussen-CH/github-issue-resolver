@@ -300,10 +300,66 @@ bucket and agents are created.
 
 ## Understand the Architecture
 
-Duration: 05:00
+Duration: 08:00
 
-Before running any scripts, let's understand the three concepts that make this system work: named agents,
-SKILL.md playbooks, and hosted MCP servers.
+Before writing any code, let's understand what the Managed Agents API is, and the three concepts that make
+this system work: named agents, SKILL.md playbooks, and hosted MCP servers.
+
+### What is the Managed Agents API?
+
+Most LLM APIs give you a text-in, text-out interface: you send a prompt, the model generates a response, done.
+That's enough for summarization or Q&A. It's not enough for resolving a GitHub issue - the agent needs to clone
+a repo, run tests, write files, and open a PR. For that, the model needs real compute.
+
+The **Managed Agents API** (part of Gemini Enterprise Agent Platform) is an API that runs a Gemini model inside
+a fully provisioned Ubuntu sandbox. The model and the compute environment are co-located: the model can run
+`bash`, execute Python, call `git`, run `pytest`, and make HTTP requests as part of a single interaction.
+
+```
+Your code (GitHub Actions workflow)
+        │
+        │  POST /v1beta1/projects/.../agents/{id}/interactions
+        │  { "input": "Fix issue #42", "tools": [GitHub MCP, ...] }
+        ▼
+  Gemini Enterprise Agent Platform
+        │
+        ├─ provisions sandboxed Ubuntu VM
+        ├─ mounts skill files from GCS
+        ├─ starts Gemini Model Runtime alongside the compute
+        │
+        │  agent reasons → calls bash → runs pytest → edits files → calls GitHub MCP → opens PR
+        │
+        └─ streams interaction events back to your workflow
+```
+
+**Key advantages over rolling your own agent:**
+
+| | Managed Agents API | Self-hosted (e.g., LangChain + Docker) |
+|---|---|---|
+| Infrastructure | Zero - platform provisions sandboxes on demand | You build, deploy, and scale the execution environment |
+| Sandbox security | Isolated per interaction, auto-cleaned | You manage isolation |
+| Long-running tasks | Background execution with `background=True`, up to 15 min | You handle timeouts and polling |
+| MCP integration | Hosted MCP servers passed at call time | You deploy or proxy MCP servers |
+| Environment snapshots | Auto-snapshot on idle, retained 7 days | You manage state persistence |
+| SDK | `google-genai` with `vertexai=True`, three lines to invoke | Framework-specific, more code |
+
+This project uses the API through the `google-genai` Python SDK:
+
+```python
+from google import genai
+
+client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
+
+# Invoke an agent - the platform does the rest
+stream = client.interactions.create(
+    agent="managed-issue-resolver",   # named agent ID
+    input=prompt,                      # what to do
+    tools=[github_mcp_server],         # external tools to connect
+    stream=True,                       # stream events as they happen
+    background=True,                   # don't block while agent runs
+    store=True,                        # persist interaction for multi-turn
+)
+```
 
 ### Concept: Named agents on Gemini Enterprise Agent Platform
 

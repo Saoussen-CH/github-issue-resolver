@@ -219,8 +219,71 @@ gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34;
 
       </google-codelab-step>
     
-      <google-codelab-step label="Understand the Architecture" duration="5">
-        <p>Before running any scripts, let&#39;s understand the three concepts that make this system work: named agents, SKILL.md playbooks, and hosted MCP servers.</p>
+      <google-codelab-step label="Understand the Architecture" duration="8">
+        <p>Before writing any code, let&#39;s understand what the Managed Agents API is, and the three concepts that make this system work: named agents, SKILL.md playbooks, and hosted MCP servers.</p>
+<h2 is-upgraded>What is the Managed Agents API?</h2>
+<p>Most LLM APIs give you a text-in, text-out interface: you send a prompt, the model generates a response, done. That&#39;s enough for summarization or Q&amp;A. It&#39;s not enough for resolving a GitHub issue - the agent needs to clone a repo, run tests, write files, and open a PR. For that, the model needs real compute.</p>
+<p>The <strong>Managed Agents API</strong> (part of Gemini Enterprise Agent Platform) is an API that runs a Gemini model inside a fully provisioned Ubuntu sandbox. The model and the compute environment are co-located: the model can run <code>bash</code>, execute Python, call <code>git</code>, run <code>pytest</code>, and make HTTP requests as part of a single interaction.</p>
+<pre><code>Your code (GitHub Actions workflow)
+        │
+        │  POST /v1beta1/projects/.../agents/{id}/interactions
+        │  { &#34;input&#34;: &#34;Fix issue #42&#34;, &#34;tools&#34;: [GitHub MCP, ...] }
+        ▼
+  Gemini Enterprise Agent Platform
+        │
+        ├─ provisions sandboxed Ubuntu VM
+        ├─ mounts skill files from GCS
+        ├─ starts Gemini Model Runtime alongside the compute
+        │
+        │  agent reasons → calls bash → runs pytest → edits files → calls GitHub MCP → opens PR
+        │
+        └─ streams interaction events back to your workflow
+</code></pre>
+<p><strong>Key advantages over rolling your own agent:</strong></p>
+<table>
+<tr><td colspan="1" rowspan="1"></td><td colspan="1" rowspan="1"><p>Managed Agents API</p>
+</td><td colspan="1" rowspan="1"><p>Self-hosted (e.g., LangChain + Docker)</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Infrastructure</p>
+</td><td colspan="1" rowspan="1"><p>Zero - platform provisions sandboxes on demand</p>
+</td><td colspan="1" rowspan="1"><p>You build, deploy, and scale the execution environment</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Sandbox security</p>
+</td><td colspan="1" rowspan="1"><p>Isolated per interaction, auto-cleaned</p>
+</td><td colspan="1" rowspan="1"><p>You manage isolation</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Long-running tasks</p>
+</td><td colspan="1" rowspan="1"><p>Background execution with <code>background=True</code>, up to 15 min</p>
+</td><td colspan="1" rowspan="1"><p>You handle timeouts and polling</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>MCP integration</p>
+</td><td colspan="1" rowspan="1"><p>Hosted MCP servers passed at call time</p>
+</td><td colspan="1" rowspan="1"><p>You deploy or proxy MCP servers</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Environment snapshots</p>
+</td><td colspan="1" rowspan="1"><p>Auto-snapshot on idle, retained 7 days</p>
+</td><td colspan="1" rowspan="1"><p>You manage state persistence</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>SDK</p>
+</td><td colspan="1" rowspan="1"><p><code>google-genai</code> with <code>vertexai=True</code>, three lines to invoke</p>
+</td><td colspan="1" rowspan="1"><p>Framework-specific, more code</p>
+</td></tr>
+</table>
+<p>This project uses the API through the <code>google-genai</code> Python SDK:</p>
+<pre><code language="language-python" class="language-python">from google import genai
+
+client = genai.Client(vertexai=True, project=PROJECT_ID, location=&#34;global&#34;)
+
+# Invoke an agent - the platform does the rest
+stream = client.interactions.create(
+    agent=&#34;managed-issue-resolver&#34;,   # named agent ID
+    input=prompt,                      # what to do
+    tools=[github_mcp_server],         # external tools to connect
+    stream=True,                       # stream events as they happen
+    background=True,                   # don&#39;t block while agent runs
+    store=True,                        # persist interaction for multi-turn
+)
+</code></pre>
 <h2 is-upgraded>Concept: Named agents on Gemini Enterprise Agent Platform</h2>
 <p>A naive approach would call <code>client.models.generate_content()</code> for each issue, embedding the system prompt, tool list, and environment config in every request. That works for simple tasks, but it re-sends the full configuration on every call and gives you no way to reuse a pre-warmed sandbox across invocations.</p>
 <p><strong>Named agents</strong> solve this. You create the agent once with its full configuration, and the platform provisions a fresh, isolated sandbox from that snapshot on each <code>client.interactions.create()</code> call. The agent ID is a stable reference that your GitHub Actions workflows use forever - you never re-specify the system prompt or environment config in application code.</p>
