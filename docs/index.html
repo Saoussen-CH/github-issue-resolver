@@ -29,7 +29,7 @@
                   feedback-link="https://github.com/googlecodelabs/feedback/issues/new?title=[managed-agents-issue-resolver]">
     
       <google-codelab-step label="Overview" duration="5">
-        <p>In this codelab you will build <strong>Managed Issue Resolver</strong>: a system that autonomously resolves GitHub issues and deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Vertex AI Agent Platform.</p>
+        <p>In this codelab you will build <strong>Managed Issue Resolver</strong>: a system that autonomously resolves GitHub issues and deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Gemini Enterprise Agent Platform.</p>
 <p>Label any issue <code>ai-resolve</code>. A managed agent reads the issue via GitHub MCP, clones the repo, reproduces the failure, fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, then promotes or rolls back automatically.</p>
 <p>No orchestration framework. No LLM wrappers. No custom sandboxes. Two SKILL.md files, two GitHub Actions workflows, three hosted MCP servers.</p>
 <h2 is-upgraded>What you&#39;ll build</h2>
@@ -40,7 +40,7 @@
         B[Run resolve.py]
     end
 
-    subgraph RA[&#34;Resolver Agent - Agent Platform&#34;]
+    subgraph RA[&#34;Resolver Agent - Gemini Enterprise Agent Platform&#34;]
         B --&gt; C[Read issue via GitHub MCP]
         C --&gt; D[&#34;git clone + pip install&#34;]
         D --&gt; E[Run pytest - record failures]
@@ -57,7 +57,7 @@
         J --&gt; K[Run deploy.py]
     end
 
-    subgraph CDA[&#34;CD Agent - Agent Platform&#34;]
+    subgraph CDA[&#34;CD Agent - Gemini Enterprise Agent Platform&#34;]
         K --&gt; L[Deploy canary revision at 10%]
         L --&gt; M{Poll Cloud Monitoring MCP\nevery 60s for 5 minutes}
         M --&gt;|error rate OK| M
@@ -160,10 +160,11 @@ GCS_SKILLS_BUCKET=managed-issue-resolver-skills-your-project-id
     
       <google-codelab-step label="Understand the Architecture" duration="5">
         <p>Before running any scripts, let&#39;s understand the two core concepts that make this system work.</p>
-<h2 is-upgraded>Named agents on Vertex AI Agent Platform</h2>
+<h2 is-upgraded>Named agents on Gemini Enterprise Agent Platform</h2>
 <p>The system uses two <strong>named agents</strong> created once via the API and reused across invocations. A named agent is a persistent configuration that stores:</p>
 <ul>
 <li>A base environment (Ubuntu, Python 3.11, Node 20, Bash, web access)</li>
+<li>A <strong>Model Runtime</strong> (Gemini models run inside the same sandbox alongside your code)</li>
 <li>A system instruction (<code>AGENTS.md</code>)</li>
 <li>GCS-mounted skill files (<code>SKILL.md</code>)</li>
 </ul>
@@ -367,7 +368,7 @@ Note: recreate agents after changing SKILL.md files:
       </google-codelab-step>
     
       <google-codelab-step label="Create Named Agents" duration="5">
-        <p>Run <code>create_agents.py</code> once to register both named agents on Vertex AI Agent Platform:</p>
+        <p>Run <code>create_agents.py</code> once to register both named agents on Gemini Enterprise Agent Platform:</p>
 <pre><code language="language-bash" class="language-bash">uv run python setup/create_agents.py
 </code></pre>
 <p>The script prints the <code>gh secret set</code> commands for both agent IDs. Run them:</p>
@@ -651,7 +652,7 @@ gcloud storage buckets list --project=$PROJECT_ID
 <h2 is-upgraded>Resources</h2>
 <ul>
 <li><a href="https://ai.google.dev/gemini-api/docs/managed-agents-quickstart" target="_blank">Managed Agents API Quickstart</a></li>
-<li><a href="https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview" target="_blank">Vertex AI Agent Platform Docs</a></li>
+<li><a href="https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview" target="_blank">Gemini Enterprise Agent Platform Docs</a></li>
 <li><a href="https://modelcontextprotocol.io/" target="_blank">Model Context Protocol</a></li>
 <li><a href="https://cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration" target="_blank">Cloud Run Traffic Splitting</a></li>
 <li><a href="https://github.com/googleapis/python-genai" target="_blank">google-genai Python SDK</a></li>

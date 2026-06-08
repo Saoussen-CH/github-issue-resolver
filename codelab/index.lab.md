@@ -1,13 +1,13 @@
 ---
 id: managed-agents-issue-resolver
-summary: Build a fully autonomous GitHub issue resolver using the Google Managed Agents API on Vertex AI Agent Platform. No orchestration framework, no infrastructure to manage.
+summary: Build a fully autonomous GitHub issue resolver using the Google Managed Agents API on Gemini Enterprise Agent Platform. No orchestration framework, no infrastructure to manage.
 status: Draft
 authors: Saoussen Chaabnia
 categories: AI, Google Cloud, Managed Agents
 tags: web
 feedback link: https://github.com/googlecodelabs/feedback/issues/new?title=[managed-agents-issue-resolver]
 analytics account: UA-52746336-1
-keywords: docType:Codelab, category:Cloud, product:VertexAI
+keywords: docType:Codelab, category:Cloud, product:GeminiEnterpriseAgentPlatform
 
 ---
 
@@ -25,7 +25,7 @@ Enable_GDP_Credits_Banner: True
 Duration: 05:00
 
 In this codelab you will build **Managed Issue Resolver**: a system that autonomously resolves GitHub issues and
-deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Vertex AI Agent Platform.
+deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Gemini Enterprise Agent Platform.
 
 Label any issue `ai-resolve`. A managed agent reads the issue via GitHub MCP, clones the repo, reproduces the failure,
 fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second managed agent deploys the fix to Cloud
@@ -45,7 +45,7 @@ flowchart TD
         B[Run resolve.py]
     end
 
-    subgraph RA["Resolver Agent - Agent Platform"]
+    subgraph RA["Resolver Agent - Gemini Enterprise Agent Platform"]
         B --> C[Read issue via GitHub MCP]
         C --> D["git clone + pip install"]
         D --> E[Run pytest - record failures]
@@ -62,7 +62,7 @@ flowchart TD
         J --> K[Run deploy.py]
     end
 
-    subgraph CDA["CD Agent - Agent Platform"]
+    subgraph CDA["CD Agent - Gemini Enterprise Agent Platform"]
         K --> L[Deploy canary revision at 10%]
         L --> M{Poll Cloud Monitoring MCP\nevery 60s for 5 minutes}
         M -->|error rate OK| M
@@ -194,12 +194,13 @@ Duration: 05:00
 
 Before running any scripts, let's understand the two core concepts that make this system work.
 
-### Named agents on Vertex AI Agent Platform
+### Named agents on Gemini Enterprise Agent Platform
 
 The system uses two **named agents** created once via the API and reused across invocations. A named agent is a
 persistent configuration that stores:
 
 - A base environment (Ubuntu, Python 3.11, Node 20, Bash, web access)
+- A **Model Runtime** (Gemini models run inside the same sandbox alongside your code)
 - A system instruction (`AGENTS.md`)
 - GCS-mounted skill files (`SKILL.md`)
 
@@ -441,7 +442,7 @@ Note: recreate agents after changing SKILL.md files:
 
 Duration: 05:00
 
-Run `create_agents.py` once to register both named agents on Vertex AI Agent Platform:
+Run `create_agents.py` once to register both named agents on Gemini Enterprise Agent Platform:
 
 ```bash
 uv run python setup/create_agents.py
@@ -828,7 +829,7 @@ Congratulations! You've built an autonomous AI-driven issue resolution and deplo
 ### Resources
 
 - [Managed Agents API Quickstart](https://ai.google.dev/gemini-api/docs/managed-agents-quickstart)
-- [Vertex AI Agent Platform Docs](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview)
+- [Gemini Enterprise Agent Platform Docs](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [Cloud Run Traffic Splitting](https://cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration)
 - [google-genai Python SDK](https://github.com/googleapis/python-genai)
