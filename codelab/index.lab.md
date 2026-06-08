@@ -569,7 +569,7 @@ purposes and follow different update paths.
 | **What it defines** | Agent identity, role, and constraints | Step-by-step operational procedure |
 | **How it's passed** | Uploaded to GCS, mounted at `/.agent/AGENTS.md`; also passed as `system_instruction` at creation | Uploaded to GCS, mounted at `/.agent/skills/{name}/` |
 | **Always in scope?** | Yes - loaded before every interaction | Yes - mounted when agent is created |
-| **Updated by** | Upload new GCS file then recreate the agent | Upload new GCS file (no agent recreation needed) |
+| **Updated by** | Upload new GCS file then recreate the agent | Upload new GCS file then recreate the agent |
 | **Enterprise ownership** | Security and compliance teams (governance layer) | Operations teams (runbook layer) |
 
 > aside positive
@@ -615,7 +615,7 @@ SKILL.md defines the workflow procedure the agent follows for a specific task ty
 mounted read-only at `/.agent/skills/{name}/` when the agent is created. The agent reads it like documentation
 when executing a task - a step-by-step runbook it follows.
 
-Updating a skill means uploading a new file to GCS. No code change, no agent recreation needed.
+Updating a skill means uploading a new file to GCS and recreating the agent. GCS sources are baked into the agent's base environment snapshot at creation time - the sandbox does not re-fetch from GCS on each interaction.
 
 The resolver agent's skill (`target-app/.agents/skills/fix-issue/SKILL.md`, excerpt):
 
