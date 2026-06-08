@@ -388,7 +388,7 @@ The critical design detail: the Gemini model and your code run **in the same san
 round-trips between the model's reasoning and code execution. When the model decides to run `pytest`, it calls
 `bash` directly inside the sandbox.
 
-Pre-installed software in every sandbox:
+Pre-installed software in every sandbox (Vertex AI Agent Platform):
 
 | Software | Version | Used by this project |
 |---|---|---|
@@ -396,8 +396,17 @@ Pre-installed software in every sandbox:
 | Node.js | 20 | Available for JavaScript projects |
 | gcloud CLI | Latest | Cloud Run, Cloud Build, and GCS operations |
 | git | Latest | Cloning repos, pushing fix branches |
-| curl / jq | Latest | HTTP requests, JSON processing |
+| curl / wget / jq | Latest | HTTP requests, JSON processing |
+| ripgrep / fd / tree | Latest | Fast file search and directory listing |
+| numpy, pandas | Latest | Available for data-processing agents |
 | google-genai SDK | Latest | Available inside the sandbox for agent sub-calls |
+
+> aside positive
+>
+> **Version note:** The Gemini API (non-Vertex) sandbox uses Python 3.12 and Node.js 22. The Vertex AI Agent
+> Platform sandbox uses Python 3.11 and Node.js 20. Both ship the same UNIX tooling and Python packages.
+> The agent can install additional packages at runtime with `pip install` or `npm install`. Installed
+> packages persist when you reuse the same `environment_id`.
 
 Built-in tools are configured at agent creation via the `tools` list:
 
@@ -417,9 +426,33 @@ Built-in tools are configured at agent creation via the `tools` list:
 multi-turn interactions, pass `environment=<env_id>` and `previous_interaction_id=<interaction_id>` to
 resume the same sandbox in a follow-up call.
 
-**Network access:** Network access is **disabled by default**. This project enables it with
-`"network": {"allowlist": [{"domain": "*"}]}`. In enterprise environments, restrict to specific domains
-(for example, `github.com` and `api.github.com` only) to limit the agent's blast radius.
+**Network access:** By default, sandbox environments have **unrestricted outbound network access**. Once you
+set a `network.allowlist`, only the listed domains are permitted. Our project sets
+`{"domain": "*"}` to preserve full access while keeping the network config explicit. In enterprise
+environments, replace `*` with specific domains to lock down egress:
+
+```python
+"network": {
+    "allowlist": [
+        {"domain": "api.github.com"},   # GitHub API only
+        {"domain": "pypi.org"},          # pip installs only
+    ]
+}
+```
+
+You can also inject credentials per-domain via `transform`. Credentials are injected by the egress proxy
+and are **never exposed inside the sandbox** as environment variables or files:
+
+```python
+"network": {
+    "allowlist": [
+        {
+            "domain": "api.github.com",
+            "transform": {"Authorization": "Bearer ghp_..."},  # injected by egress proxy
+        }
+    ]
+}
+```
 
 > aside positive
 >
@@ -530,10 +563,24 @@ purposes and follow different update paths.
 | | AGENTS.md | SKILL.md |
 |---|---|---|
 | **What it defines** | Agent identity, role, and constraints | Step-by-step operational procedure |
-| **Passed as** | `system_instruction` at agent creation | GCS file, mounted at `/.agent/skills/{name}/` |
+| **How it's passed** | Content read and passed as `system_instruction` parameter | GCS file, mounted at `/.agent/skills/{name}/` |
 | **Always in scope?** | Yes - loaded before every interaction | Yes - mounted when agent is created |
 | **Updated by** | Recreating the agent (control plane call) | Uploading a new GCS file (no code change) |
 | **Enterprise ownership** | Security and compliance teams (governance layer) | Operations teams (runbook layer) |
+
+> aside positive
+>
+> **`system_instruction` and mounted AGENTS.md are additive.** The harness supports two ways to set
+> instructions: the `system_instruction` parameter (passed at create or interaction time) and an `AGENTS.md`
+> file mounted in the environment. Both apply when present. This project uses only the parameter approach:
+> `create_agents.py` reads `AGENTS.md` from disk and passes its content as `system_instruction`. There is no
+> separately mounted file.
+
+> aside positive
+>
+> **You can override `system_instruction` and `tools` per interaction.** Named agents set defaults on the
+> control plane, but both fields can be overridden when calling `client.interactions.create()`. This lets you
+> adjust behavior for a specific run without modifying the stored agent definition.
 
 **AGENTS.md - system instruction:**
 
