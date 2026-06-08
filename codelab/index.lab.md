@@ -379,10 +379,14 @@ client.agents.create(
 )
 ```
 
-The Antigravity harness is built on **Gemini 3.5 Flash** and runs in a fully managed, isolated Ubuntu
-environment. The critical design detail: the Gemini model and your code run **in the same sandbox**. There are
-no network round-trips between the model's reasoning and code execution. When the model decides to run
-`pytest`, it calls `bash` directly inside the sandbox.
+The Antigravity harness is built on **Gemini 3.5 Flash** - a model designed specifically for long-horizon
+agentic and coding tasks, and 4x faster than comparable frontier models in token output speed. The model and
+compute environment are co-optimized: Gemini 3.5 Flash is not a general-purpose model adapted for agents, it
+is a model built from the ground up to reason, execute code, and manage multi-step workflows.
+
+The critical design detail: the Gemini model and your code run **in the same sandbox**. There are no network
+round-trips between the model's reasoning and code execution. When the model decides to run `pytest`, it calls
+`bash` directly inside the sandbox.
 
 Pre-installed software in every sandbox:
 
