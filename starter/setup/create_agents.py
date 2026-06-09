@@ -13,14 +13,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 PROJECT_ID = os.environ["GOOGLE_CLOUD_PROJECT"]
 GCS_SKILLS_BUCKET = os.environ["GCS_SKILLS_BUCKET"]
 
 client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
 
-_root = Path(__file__).parent.parent
+_root = Path(__file__).parent.parent.parent
 
 RESOLVER_AGENTS_MD = (_root / "starter/target-app/.agents/AGENTS.md").read_text()
 CD_AGENTS_MD = (_root / "starter/cd-agent/AGENTS.md").read_text()

@@ -90,6 +90,7 @@ setup/
   delete_agents.py      # deletes agents (run before recreating)
   test_agents.py        # smoke-tests agents after creation
   reset_demo.sh         # restores bugs, closes open PRs, commits, pushes, redeploys
+  teardown.sh           # deletes all cloud resources created during the workshop
   utils_broken.py       # canonical buggy utils.py (source of truth for reset)
 
 target-app/             # the conference session browser

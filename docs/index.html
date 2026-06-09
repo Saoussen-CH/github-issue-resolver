@@ -108,6 +108,7 @@ git checkout -b master
 <pre><code language="language-bash" class="language-bash">gh auth login
 git remote remove origin
 gh repo create managed-issue-resolver --public --source=. --remote=origin --push
+REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
 </code></pre>
 <aside class="special"><p><strong>Why public?</strong> The <code>GITHUB_TOKEN</code> that GitHub Actions provides automatically has <code>contents: write</code> and <code>pull-requests: write</code> permissions by default on public repos. Private repos require additional configuration.</p>
 </aside>
@@ -195,10 +196,11 @@ done
 <h2 is-upgraded>Add GitHub secrets</h2>
 <p>The workflows read secrets from the repository. Add them before the first run:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
 
-gh secret set GCP_SA_KEY &lt; sa-key.json
-gh secret set GCP_PROJECT_ID --body &#34;$PROJECT_ID&#34;
-gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34;
+gh secret set GCP_SA_KEY --repo &#34;$REPO&#34; &lt; sa-key.json
+gh secret set GCP_PROJECT_ID --body &#34;$PROJECT_ID&#34; --repo &#34;$REPO&#34;
+gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34; --repo &#34;$REPO&#34;
 </code></pre>
 <p>Then delete the local key file:</p>
 <pre><code language="language-bash" class="language-bash">rm sa-key.json
@@ -414,6 +416,159 @@ gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -&gt; /.agent/skills/fi
 
       </google-codelab-step>
     
+      <google-codelab-step label="Write the CD Agent" duration="8">
+        <p>The CD agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates for 5 minutes, then promotes or rolls back automatically. Like the resolver, it needs an AGENTS.md and a SKILL.md.</p>
+<h2 is-upgraded>Concept: The CD AGENTS.md rules</h2>
+<p>The CD agent has code execution and network access. Without explicit rules it would make unsafe deployment decisions:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Rule</p>
+</td><td colspan="1" rowspan="1"><p>What failure it prevents</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Always record the stable revision before deploying</p>
+</td><td colspan="1" rowspan="1"><p>Rollback is impossible without it - Cloud Run has no &#34;undo&#34; for traffic splits</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Never use <code>gcloud logging read</code> for health decisions</p>
+</td><td colspan="1" rowspan="1"><p>Log ingestion has 30-90 second delay and no denominator - logs cannot compute error rate</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Never close the issue on rollback</p>
+</td><td colspan="1" rowspan="1"><p>The fix did not reach production - closing signals false success to the team</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>If no linked issue found in PR, skip GitHub steps</p>
+</td><td colspan="1" rowspan="1"><p>Not every PR has an issue reference; the agent should still complete the deploy</p>
+</td></tr>
+</table>
+<h2 is-upgraded>Open the CD AGENTS.md</h2>
+<pre><code language="language-bash" class="language-bash">cloudshell edit starter/cd-agent/AGENTS.md
+</code></pre>
+<p>The persona and 6-step high-level workflow are pre-filled. You&#39;ll see a <code><!-- TODO --></code> comment for the <code>## Rules</code> section.</p>
+<h2 is-upgraded>TODO - Add the CD Rules</h2>
+<p>Replace the <code><!-- TODO --></code> comment with:</p>
+<pre><code language="language-markdown" class="language-markdown">- Always record the stable revision before deploying. Rollback is impossible without it.
+- Never use `gcloud logging read` for health decisions. Use Cloud Monitoring MCP for metrics.
+- Never close the issue on rollback. The fix did not reach production.
+- If no linked issue is found in the PR body, skip the GitHub steps entirely.
+</code></pre>
+<p>Compare your file with <code>cd-agent/AGENTS.md</code> when done.</p>
+<h2 is-upgraded>Concept: The canary monitoring playbook</h2>
+<p>The SKILL.md for the CD agent defines the full canary deploy workflow, including the verdict table the agent applies at each monitoring check:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Condition</p>
+</td><td colspan="1" rowspan="1"><p>Verdict</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>canary_total < 5</code></p>
+</td><td colspan="1" rowspan="1"><p>HOLD (not enough traffic yet - denominator too small)</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>canary_error_rate > 0.05</code> AND <code>> stable_error_rate * 2</code></p>
+</td><td colspan="1" rowspan="1"><p>ROLLBACK</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>canary_error_rate <= 0.05</code></p>
+</td><td colspan="1" rowspan="1"><p>OK</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Two consecutive HOLDs</p>
+</td><td colspan="1" rowspan="1"><p>ROLLBACK (no traffic reaching canary)</p>
+</td></tr>
+</table>
+<p>The agent runs 5 checks, 60 seconds apart. ROLLBACK triggers immediately on any check. Promotion requires all 5 checks to pass.</p>
+<p><strong>Why </strong></p>
+<p><strong><code>canary_total < 5</code></strong></p>
+<p><strong> (HOLD)?</strong> A denominator guard. If only 2 requests have reached the canary, one error gives a 50% error rate - statistical noise, not a real failure. HOLD prevents false ROLLBACKs on a quiet canary window.</p>
+<p><strong>Why </strong></p>
+<p><strong><code>canary_error_rate > 0.05 AND > stable_error_rate * 2</code></strong></p>
+<p><strong>?</strong> Both conditions must be true. A 3% canary error rate is acceptable if the stable revision is also running at 2% - that is a shared infrastructure issue, not a regression. Requiring 2x stable as the threshold filters out baseline noise.</p>
+<p><strong>Why </strong></p>
+<p><strong><code>--to-latest</code></strong></p>
+<p><strong> on promotion?</strong> If you use <code>--to-revisions NEW_REV=100</code>, Cloud Run enters &#34;manual traffic mode.&#34; Future deployments create new revisions but get no traffic until you manually update the traffic config. <code>--to-latest</code> keeps the service in automatic mode where each new deploy automatically becomes active.</p>
+<h2 is-upgraded>Open the CD SKILL.md</h2>
+<pre><code language="language-bash" class="language-bash">cloudshell edit starter/cd-agent/SKILL.md
+</code></pre>
+<p>The trigger and tools sections are pre-filled. You&#39;ll see two <code><!-- TODO --></code> comment blocks: one for <code>## Steps</code> and one for <code>## Critical rules</code>.</p>
+<h2 is-upgraded>TODO - Add the Steps and Critical Rules</h2>
+<p>The 12-step workflow covers: authenticate, record stable revision, deploy with <code>--no-traffic</code>, get new revision name, split traffic at 10%, run the monitoring loop with the verdict table, promote or roll back, get the service URL, extract the issue number from the PR body, and post the result.</p>
+<p>Replace the <code><!-- TODO --></code> comment inside <code>## Steps</code> with:</p>
+<pre><code language="language-markdown" class="language-markdown">1. **Authenticate gcloud** using the access token from the prompt:
+   ```bash
+   export CLOUDSDK_AUTH_ACCESS_TOKEN=&lt;token_from_prompt&gt;
+   ```
+
+2. **Record the stable revision** before any change:
+   ```bash
+   gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --format=&#34;value(REVISION)&#34; --limit=1
+   ```
+   Save this as STABLE_REV. This is the rollback target.
+
+3. **Deploy the new image with no traffic**:
+   ```bash
+   gcloud run deploy &lt;SERVICE&gt; \
+     --image &lt;IMAGE_URL&gt; \
+     --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --no-traffic --quiet
+   ```
+
+4. **Get the new revision name**:
+   ```bash
+   gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --format=&#34;value(REVISION)&#34; --limit=1
+   ```
+   Save this as NEW_REV.
+
+5. **Split traffic at 10%**:
+   ```bash
+   gcloud run services update-traffic &lt;SERVICE&gt; \
+     --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --to-revisions NEW_REV=10,STABLE_REV=90
+   ```
+
+6. **Monitoring loop** - run 5 checks, 60 seconds apart, using Cloud Monitoring MCP:
+   - Query `run.googleapis.com/request_count` for the last 2 minutes, grouped by `response_code_class`
+   - Compute canary_error_rate and stable_error_rate from 5xx vs total
+   - Apply the verdict table:
+
+   | Condition | Verdict |
+   |---|---|
+   | canary_total &lt; 5 | HOLD |
+   | canary_error_rate &gt; 0.05 AND &gt; stable_error_rate * 2 | ROLLBACK |
+   | canary_error_rate &lt;= 0.05 | OK |
+   | Two consecutive HOLDs | ROLLBACK |
+
+   Stop immediately on ROLLBACK. Proceed to step 7 after all 5 checks pass as OK.
+
+7. **Promote** (all checks OK):
+   ```bash
+   gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; --to-latest
+   ```
+
+   **Or rollback** (any ROLLBACK verdict):
+   ```bash
+   gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --to-revisions STABLE_REV=100
+   ```
+
+8. **Get the service URL**:
+   ```bash
+   gcloud run services describe &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --format=&#34;value(status.url)&#34;
+   ```
+
+9. **Find the linked issue number** from the PR body: look for &#34;Closes #N&#34; or &#34;Fixes #N&#34;.
+
+10. **On success**: post a comment on the issue with the revision name and live URL, then close the issue via GitHub MCP.
+
+11. **On rollback**: use Cloud Logging MCP to fetch the top 5 recent error log entries for the service.
+    Post a comment on the issue with the error rate, rollback reason, and log entries. Do NOT close the issue.
+
+12. If no linked issue is found, skip GitHub steps - the deployment result is complete.
+</code></pre>
+<p>Replace the <code><!-- TODO --></code> comment inside <code>## Critical rules</code> with:</p>
+<pre><code language="language-markdown" class="language-markdown">- **Always record STABLE_REV before step 3.** Rollback is impossible without it.
+- **Never use Cloud Logging for the promote/rollback decision.** Use Cloud Monitoring MCP only.
+- **Never close the issue on rollback.** The fix did not reach production.
+</code></pre>
+<p>Compare your file with <code>cd-agent/SKILL.md</code> when done.</p>
+
+
+      </google-codelab-step>
+    
       <google-codelab-step label="Create Named Agents" duration="8">
         <p>You have the agent files. Now you&#39;ll upload them to GCS and register the two named agents on Gemini Enterprise Agent Platform.</p>
 <h2 is-upgraded>Concept: The Antigravity harness</h2>
@@ -535,8 +690,9 @@ Note: recreate agents after changing SKILL.md or AGENTS.md files:
 <pre><code language="language-bash" class="language-bash">uv run python starter/setup/create_agents.py
 </code></pre>
 <p>The script prints the <code>gh secret set</code> commands for both agent IDs. Run them:</p>
-<pre><code language="language-bash" class="language-bash">gh secret set RESOLVER_AGENT_ID --body &#34;managed-issue-resolver&#34;
-gh secret set CD_AGENT_ID --body &#34;managed-issue-cd&#34;
+<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
+gh secret set RESOLVER_AGENT_ID --body &#34;managed-issue-resolver&#34; --repo &#34;$REPO&#34;
+gh secret set CD_AGENT_ID --body &#34;managed-issue-cd&#34; --repo &#34;$REPO&#34;
 </code></pre>
 <h2 is-upgraded>Verify the agents</h2>
 <p>Run the smoke test before triggering any workflow:</p>
@@ -702,6 +858,12 @@ gcloud artifacts repositories create managed-issue-resolver \
 <p><strong><code>background=True</code></strong> makes the <code>create()</code> call return as soon as the agent starts, not when it finishes. Without this, the SDK blocks for 3-5 minutes while the agent runs and GitHub Actions would hit the step timeout.</p>
 <p><strong><code>store=True</code></strong> persists the interaction so a follow-up call can resume it via <code>previous_interaction_id</code> for multi-turn sessions or retries.</p>
 <p>Compare your completed file with <code>resolver/resolve.py</code> when done.</p>
+<h2 is-upgraded>Push resolve.py to GitHub</h2>
+<p>GitHub Actions checks out your repo when it runs. Push <code>resolve.py</code> now so the workflow uses your completed version:</p>
+<pre><code language="language-bash" class="language-bash">git add starter/resolver/resolve.py
+git commit -m &#34;fill in resolve.py&#34;
+git push origin master
+</code></pre>
 
 
       </google-codelab-step>
@@ -709,7 +871,8 @@ gcloud artifacts repositories create managed-issue-resolver \
       <google-codelab-step label="Trigger Issue Resolution" duration="10">
         <p>The resolver workflow fires when a GitHub issue receives the <code>ai-resolve</code> label. Let&#39;s trigger it and watch the agent work.</p>
 <h2 is-upgraded>Create the <code>ai-resolve</code> label</h2>
-<pre><code language="language-bash" class="language-bash">gh label create ai-resolve --color &#34;0075ca&#34; --description &#34;Trigger AI issue resolution&#34;
+<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
+gh label create ai-resolve --color &#34;0075ca&#34; --description &#34;Trigger AI issue resolution&#34; --repo &#34;$REPO&#34;
 </code></pre>
 <h2 is-upgraded>Open an issue</h2>
 <pre><code language="language-bash" class="language-bash">gh issue create \
@@ -719,11 +882,12 @@ gcloud artifacts repositories create managed-issue-resolver \
 Expected: only sessions matching the selected track should appear.
 
 Bug is in \`target-app/utils.py\`.&#34; \
-  --label &#34;ai-resolve&#34;
+  --label &#34;ai-resolve&#34; \
+  --repo &#34;$REPO&#34;
 </code></pre>
 <p>The <code>ai-resolve</code> label triggers the workflow immediately.</p>
 <h2 is-upgraded>Watch the agent work</h2>
-<pre><code language="language-bash" class="language-bash">gh run watch
+<pre><code language="language-bash" class="language-bash">gh run watch --repo &#34;$REPO&#34;
 </code></pre>
 <p>You&#39;ll see the GitHub Actions run progress through these steps:</p>
 <pre><code language="language-text" class="language-text">✓ Checkout
@@ -760,161 +924,8 @@ Bug is in \`target-app/utils.py\`.&#34; \
 
       </google-codelab-step>
     
-      <google-codelab-step label="Write the CD Agent" duration="8">
-        <p>The CD agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates for 5 minutes, then promotes or rolls back automatically. Like the resolver, it needs an AGENTS.md and a SKILL.md.</p>
-<h2 is-upgraded>Concept: The CD AGENTS.md rules</h2>
-<p>The CD agent has code execution and network access. Without explicit rules it would make unsafe deployment decisions:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Rule</p>
-</td><td colspan="1" rowspan="1"><p>What failure it prevents</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Always record the stable revision before deploying</p>
-</td><td colspan="1" rowspan="1"><p>Rollback is impossible without it - Cloud Run has no &#34;undo&#34; for traffic splits</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Never use <code>gcloud logging read</code> for health decisions</p>
-</td><td colspan="1" rowspan="1"><p>Log ingestion has 30-90 second delay and no denominator - logs cannot compute error rate</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Never close the issue on rollback</p>
-</td><td colspan="1" rowspan="1"><p>The fix did not reach production - closing signals false success to the team</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>If no linked issue found in PR, skip GitHub steps</p>
-</td><td colspan="1" rowspan="1"><p>Not every PR has an issue reference; the agent should still complete the deploy</p>
-</td></tr>
-</table>
-<h2 is-upgraded>Open the CD AGENTS.md</h2>
-<pre><code language="language-bash" class="language-bash">cloudshell edit starter/cd-agent/AGENTS.md
-</code></pre>
-<p>The persona and 6-step high-level workflow are pre-filled. You&#39;ll see a <code><!-- TODO --></code> comment for the <code>## Rules</code> section.</p>
-<h2 is-upgraded>TODO - Add the CD Rules</h2>
-<p>Replace the <code><!-- TODO --></code> comment with:</p>
-<pre><code language="language-markdown" class="language-markdown">- Always record the stable revision before deploying. Rollback is impossible without it.
-- Never use `gcloud logging read` for health decisions. Use Cloud Monitoring MCP for metrics.
-- Never close the issue on rollback. The fix did not reach production.
-- If no linked issue is found in the PR body, skip the GitHub steps entirely.
-</code></pre>
-<p>Compare your file with <code>cd-agent/AGENTS.md</code> when done.</p>
-<h2 is-upgraded>Concept: The canary monitoring playbook</h2>
-<p>The SKILL.md for the CD agent defines the full canary deploy workflow, including the verdict table the agent applies at each monitoring check:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Condition</p>
-</td><td colspan="1" rowspan="1"><p>Verdict</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>canary_total < 5</code></p>
-</td><td colspan="1" rowspan="1"><p>HOLD (not enough traffic yet - denominator too small)</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>canary_error_rate > 0.05</code> AND <code>> stable_error_rate * 2</code></p>
-</td><td colspan="1" rowspan="1"><p>ROLLBACK</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>canary_error_rate <= 0.05</code></p>
-</td><td colspan="1" rowspan="1"><p>OK</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Two consecutive HOLDs</p>
-</td><td colspan="1" rowspan="1"><p>ROLLBACK (no traffic reaching canary)</p>
-</td></tr>
-</table>
-<p>The agent runs 5 checks, 60 seconds apart. ROLLBACK triggers immediately on any check. Promotion requires all 5 checks to pass.</p>
-<p><strong>Why </strong></p>
-<p><strong><code>canary_total < 5</code></strong></p>
-<p><strong> (HOLD)?</strong> A denominator guard. If only 2 requests have reached the canary, one error gives a 50% error rate - statistical noise, not a real failure. HOLD prevents false ROLLBACKs on a quiet canary window.</p>
-<p><strong>Why </strong></p>
-<p><strong><code>canary_error_rate > 0.05 AND > stable_error_rate * 2</code></strong></p>
-<p><strong>?</strong> Both conditions must be true. A 3% canary error rate is acceptable if the stable revision is also running at 2% - that is a shared infrastructure issue, not a regression. Requiring 2x stable as the threshold filters out baseline noise.</p>
-<p><strong>Why </strong></p>
-<p><strong><code>--to-latest</code></strong></p>
-<p><strong> on promotion?</strong> If you use <code>--to-revisions NEW_REV=100</code>, Cloud Run enters &#34;manual traffic mode.&#34; Future deployments create new revisions but get no traffic until you manually update the traffic config. <code>--to-latest</code> keeps the service in automatic mode where each new deploy automatically becomes active.</p>
-<h2 is-upgraded>Open the CD SKILL.md</h2>
-<pre><code language="language-bash" class="language-bash">cloudshell edit starter/cd-agent/SKILL.md
-</code></pre>
-<p>The trigger and tools sections are pre-filled. You&#39;ll see two <code><!-- TODO --></code> comment blocks: one for <code>## Steps</code> and one for <code>## Critical rules</code>.</p>
-<h2 is-upgraded>TODO - Add the Steps and Critical Rules</h2>
-<p>The 12-step workflow covers: authenticate, record stable revision, deploy with <code>--no-traffic</code>, get new revision name, split traffic at 10%, run the monitoring loop with the verdict table, promote or roll back, get the service URL, extract the issue number from the PR body, and post the result.</p>
-<p>Replace the <code><!-- TODO --></code> comment inside <code>## Steps</code> with:</p>
-<pre><code language="language-markdown" class="language-markdown">1. **Authenticate gcloud** using the access token from the prompt:
-   ```bash
-   export CLOUDSDK_AUTH_ACCESS_TOKEN=&lt;token_from_prompt&gt;
-   ```
-
-2. **Record the stable revision** before any change:
-   ```bash
-   gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-     --format=&#34;value(REVISION)&#34; --limit=1
-   ```
-   Save this as STABLE_REV. This is the rollback target.
-
-3. **Deploy the new image with no traffic**:
-   ```bash
-   gcloud run deploy &lt;SERVICE&gt; \
-     --image &lt;IMAGE_URL&gt; \
-     --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-     --no-traffic --quiet
-   ```
-
-4. **Get the new revision name**:
-   ```bash
-   gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-     --format=&#34;value(REVISION)&#34; --limit=1
-   ```
-   Save this as NEW_REV.
-
-5. **Split traffic at 10%**:
-   ```bash
-   gcloud run services update-traffic &lt;SERVICE&gt; \
-     --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-     --to-revisions NEW_REV=10,STABLE_REV=90
-   ```
-
-6. **Monitoring loop** - run 5 checks, 60 seconds apart, using Cloud Monitoring MCP:
-   - Query `run.googleapis.com/request_count` for the last 2 minutes, grouped by `response_code_class`
-   - Compute canary_error_rate and stable_error_rate from 5xx vs total
-   - Apply the verdict table:
-
-   | Condition | Verdict |
-   |---|---|
-   | canary_total &lt; 5 | HOLD |
-   | canary_error_rate &gt; 0.05 AND &gt; stable_error_rate * 2 | ROLLBACK |
-   | canary_error_rate &lt;= 0.05 | OK |
-   | Two consecutive HOLDs | ROLLBACK |
-
-   Stop immediately on ROLLBACK. Proceed to step 7 after all 5 checks pass as OK.
-
-7. **Promote** (all checks OK):
-   ```bash
-   gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; --to-latest
-   ```
-
-   **Or rollback** (any ROLLBACK verdict):
-   ```bash
-   gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-     --to-revisions STABLE_REV=100
-   ```
-
-8. **Get the service URL**:
-   ```bash
-   gcloud run services describe &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-     --format=&#34;value(status.url)&#34;
-   ```
-
-9. **Find the linked issue number** from the PR body: look for &#34;Closes #N&#34; or &#34;Fixes #N&#34;.
-
-10. **On success**: post a comment on the issue with the revision name and live URL, then close the issue via GitHub MCP.
-
-11. **On rollback**: use Cloud Logging MCP to fetch the top 5 recent error log entries for the service.
-    Post a comment on the issue with the error rate, rollback reason, and log entries. Do NOT close the issue.
-
-12. If no linked issue is found, skip GitHub steps - the deployment result is complete.
-</code></pre>
-<p>Replace the <code><!-- TODO --></code> comment inside <code>## Critical rules</code> with:</p>
-<pre><code language="language-markdown" class="language-markdown">- **Always record STABLE_REV before step 3.** Rollback is impossible without it.
-- **Never use Cloud Logging for the promote/rollback decision.** Use Cloud Monitoring MCP only.
-- **Never close the issue on rollback.** The fix did not reach production.
-</code></pre>
-<p>Compare your file with <code>cd-agent/SKILL.md</code> when done.</p>
-
-
-      </google-codelab-step>
-    
       <google-codelab-step label="Invoke the CD Agent" duration="6">
-        <p>The CD workflow calls <code>deploy.py</code> with the PR URL and the pre-built image URL after Cloud Build completes. Let&#39;s write the script.</p>
+        <p>The resolver agent is running and will take 3-5 minutes. Use that time to write <code>deploy.py</code> — the script the CD workflow calls with the PR URL and the pre-built image URL after Cloud Build completes.</p>
 <h2 is-upgraded>Concept: Three MCP servers and GCP token freshness</h2>
 <p>The CD agent uses three MCP servers, each at a different stage of the deployment:</p>
 <table>
@@ -1009,6 +1020,12 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <p><strong>, </strong></p>
 <p><strong><code>store=True</code></strong> have the same meaning as in <code>resolve.py</code>. The CD agent runs for 7-10 minutes (deploy + 5-minute canary window + promote/rollback), which makes <code>background=True</code> especially important here.</p>
 <p>Compare your completed file with <code>cd-agent/deploy.py</code> when done.</p>
+<h2 is-upgraded>Push deploy.py to GitHub</h2>
+<p>The CD workflow runs <code>deploy.py</code> from the checked-out repo. Push it before merging the PR:</p>
+<pre><code language="language-bash" class="language-bash">git add starter/cd-agent/deploy.py
+git commit -m &#34;fill in deploy.py&#34;
+git push origin master
+</code></pre>
 
 
       </google-codelab-step>
@@ -1017,13 +1034,14 @@ Bug is in \`target-app/utils.py\`.&#34; \
         <p>The resolver agent&#39;s workflow is complete. It has opened a PR. You will review it, merge it, and watch the CD agent deploy the fix.</p>
 <h2 is-upgraded>Review and merge the PR</h2>
 <p>When the resolver agent&#39;s workflow completes, check the open PRs:</p>
-<pre><code language="language-bash" class="language-bash">gh pr list
+<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
+gh pr list --repo &#34;$REPO&#34;
 </code></pre>
 <p>You should see one PR from <code>fix/issue-1</code>:</p>
 <pre><code language="language-text" class="language-text">#2  fix: track filter returns no sessions (closes #1)  fix/issue-1
 </code></pre>
 <p>Review the diff:</p>
-<pre><code language="language-bash" class="language-bash">gh pr diff 2
+<pre><code language="language-bash" class="language-bash">gh pr diff 2 --repo &#34;$REPO&#34;
 </code></pre>
 <p>The agent should have changed <code>utils.py</code> to:</p>
 <ul>
@@ -1035,7 +1053,7 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <aside class="special"><p><strong>Always review before merging.</strong> The agent is autonomous but you are the last line of defense. Check that the fix is targeted: only the four buggy functions should change. If the agent modified unrelated files or added unnecessary code, close the PR and re-open the issue.</p>
 </aside>
 <p>Merge it:</p>
-<pre><code language="language-bash" class="language-bash">gh pr merge 2 --squash --delete-branch
+<pre><code language="language-bash" class="language-bash">gh pr merge 2 --squash --delete-branch --repo &#34;$REPO&#34;
 </code></pre>
 <p>This triggers the CD workflow immediately.</p>
 <h2 is-upgraded>What the CD agent does</h2>
@@ -1053,10 +1071,10 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <li><strong>Closes the linked issue</strong> via GitHub MCP with the revision name and live URL</li>
 </ol>
 <h2 is-upgraded>Watch the CD workflow</h2>
-<pre><code language="language-bash" class="language-bash">gh run watch
+<pre><code language="language-bash" class="language-bash">gh run watch --repo &#34;$REPO&#34;
 </code></pre>
 <p>When the CD agent completes, check the linked issue is closed:</p>
-<pre><code language="language-bash" class="language-bash">gh issue list --state closed
+<pre><code language="language-bash" class="language-bash">gh issue list --state closed --repo &#34;$REPO&#34;
 </code></pre>
 <p>Verify the fix is live in your browser: the track filter should now work.</p>
 <aside class="warning"><p><strong>If the CD agent times out</strong>: This is rare but can happen if Cloud Build takes longer than expected. Re-trigger by re-merging the PR or running <code>uv run python starter/cd-agent/deploy.py <pr_url> <image_url></code> locally.</p>
@@ -1085,37 +1103,14 @@ Open a new issue with the &#39;ai-resolve&#39; label to trigger the agent.
 <aside class="special"><p><strong>Why </strong><strong><code>setup/utils_broken.py</code></strong><strong>?</strong> The reset script copies from this canonical file rather than reverting with git. The agent never writes to <code>setup/</code> (it only clones <code>target-app/</code>), so <code>utils_broken.py</code> is never accidentally modified.</p>
 </aside>
 <h2 is-upgraded>Remove all resources</h2>
-<p>Delete the Cloud Run service:</p>
-<pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
-
-gcloud run services delete target-app \
-  --region=us-central1 \
-  --project=$PROJECT_ID --quiet
+<p>Run the teardown script to delete all cloud resources created in this codelab:</p>
+<pre><code language="language-bash" class="language-bash">bash setup/teardown.sh
 </code></pre>
-<p>Delete the Artifact Registry repository:</p>
-<pre><code language="language-bash" class="language-bash">gcloud artifacts repositories delete managed-issue-resolver \
-  --location=us-central1 \
-  --project=$PROJECT_ID --quiet
+<p>The script deletes: named agents, GCS bucket, Cloud Run service, Artifact Registry repository, service account, GitHub secrets, and the <code>ai-resolve</code> label. Each resource is skipped gracefully if it no longer exists.</p>
+<p>To also delete your GitHub repository:</p>
+<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
+gh repo delete &#34;$REPO&#34; --yes
 </code></pre>
-<p>Delete the GCS skills bucket:</p>
-<pre><code language="language-bash" class="language-bash">GCS_SKILLS_BUCKET=$(grep GCS_SKILLS_BUCKET .env | cut -d= -f2)
-
-gcloud storage rm -r gs://$GCS_SKILLS_BUCKET
-</code></pre>
-<p>Delete the named agents:</p>
-<pre><code language="language-bash" class="language-bash">uv run python setup/delete_agents.py
-</code></pre>
-<p>Delete the service account:</p>
-<pre><code language="language-bash" class="language-bash">SA=managed-issue-resolver@$PROJECT_ID.iam.gserviceaccount.com
-
-gcloud iam service-accounts delete $SA \
-  --project=$PROJECT_ID --quiet
-</code></pre>
-<h2 is-upgraded>Verify everything is removed</h2>
-<pre><code language="language-bash" class="language-bash">gcloud run services list --region=us-central1 --project=$PROJECT_ID
-gcloud storage buckets list --project=$PROJECT_ID
-</code></pre>
-<p>Expected output: empty lists or only your own pre-existing resources.</p>
 
 
       </google-codelab-step>
