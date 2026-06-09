@@ -158,6 +158,7 @@ Push the codelab content to your own GitHub repo so GitHub Actions can run:
 
 ```bash
 gh auth login
+git remote remove origin
 gh repo create managed-issue-resolver --public --source=. --remote=origin --push
 ```
 

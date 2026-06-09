@@ -143,6 +143,7 @@ git checkout -b master
 <h2 is-upgraded>Create your GitHub repo</h2>
 <p>Push the codelab content to your own GitHub repo so GitHub Actions can run:</p>
 <pre><code language="language-bash" class="language-bash">gh auth login
+git remote remove origin
 gh repo create managed-issue-resolver --public --source=. --remote=origin --push
 </code></pre>
 <aside class="special"><p><strong>Why public?</strong> The <code>GITHUB_TOKEN</code> that GitHub Actions provides automatically has <code>contents: write</code> and <code>pull-requests: write</code> permissions by default on public repos. Private repos require additional configuration.</p>
