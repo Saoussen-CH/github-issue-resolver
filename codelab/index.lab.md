@@ -316,8 +316,7 @@ rm sa-key.json
 > permissions**. Check: **Allow GitHub Actions to create and approve pull requests**. Without this, the
 > resolver agent cannot open a PR and the workflow will fail with a `403` error.
 
-The secrets `GCS_SKILLS_BUCKET`, `RESOLVER_AGENT_ID`, and `CD_AGENT_ID` will be added in the next steps after
-the bucket and agents are created.
+The secrets `RESOLVER_AGENT_ID` and `CD_AGENT_ID` will be added in the next steps after the agents are created.
 
 ## What is the Managed Agents API?
 
@@ -443,7 +442,7 @@ Put in **SKILL.md** anything that defines HOW to do a specific task:
 cloudshell edit starter/target-app/.agents/AGENTS.md
 ```
 
-You'll see a `# TODO` comment for the `## Rules` section. The persona is already filled in.
+You'll see a `<!-- TODO -->` comment for the `## Rules` section. The persona is already filled in.
 
 ### TODO - Add the Rules section
 
@@ -480,7 +479,7 @@ Compare your file with `target-app/.agents/AGENTS.md` when done.
 cloudshell edit "starter/target-app/.agents/skills/fix-issue/SKILL.md"
 ```
 
-You'll see two `# TODO` comment blocks: one for `## Workflow` and one for `## Critical rules`. The trigger
+You'll see two `<!-- TODO -->` comment blocks: one for `## Workflow` and one for `## Critical rules`. The trigger
 and tools sections at the top are already filled in.
 
 ### TODO - Add the Workflow and Critical Rules
@@ -595,12 +594,6 @@ GCS_SKILLS_BUCKET=$(grep GCS_SKILLS_BUCKET .env | cut -d= -f2)
 gcloud storage buckets create gs://$GCS_SKILLS_BUCKET \
   --location=us-central1 \
   --project=$PROJECT_ID
-```
-
-Add the bucket name as a GitHub secret:
-
-```bash
-gh secret set GCS_SKILLS_BUCKET --body "$GCS_SKILLS_BUCKET"
 ```
 
 Upload all AGENTS.md and SKILL.md files:
@@ -1044,7 +1037,7 @@ decisions:
 cloudshell edit starter/cd-agent/AGENTS.md
 ```
 
-The persona and 6-step high-level workflow are pre-filled. You'll see a `# TODO` comment for the `## Rules`
+The persona and 6-step high-level workflow are pre-filled. You'll see a `<!-- TODO -->` comment for the `## Rules`
 section.
 
 ### TODO - Add the CD Rules
@@ -1093,7 +1086,7 @@ mode." Future deployments create new revisions but get no traffic until you manu
 cloudshell edit starter/cd-agent/SKILL.md
 ```
 
-The trigger and tools sections are pre-filled. You'll see two `# TODO` comment blocks: one for `## Steps` and
+The trigger and tools sections are pre-filled. You'll see two `<!-- TODO -->` comment blocks: one for `## Steps` and
 one for `## Critical rules`.
 
 ### TODO - Add the Steps and Critical Rules
@@ -1388,7 +1381,7 @@ Verify the fix is live in your browser: the track filter should now work.
 > aside negative
 >
 > **If the CD agent times out**: This is rare but can happen if Cloud Build takes longer than expected.
-> Re-trigger by re-merging the PR or running `uv run python cd-agent/deploy.py <pr_url> <image_url>`
+> Re-trigger by re-merging the PR or running `uv run python starter/cd-agent/deploy.py <pr_url> <image_url>`
 > locally.
 
 ## Clean Up

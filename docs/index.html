@@ -236,7 +236,7 @@ gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34;
 <p><code>GITHUB_TOKEN</code> is provided automatically by GitHub Actions (no action needed).</p>
 <aside class="warning"><p><strong>Allow pull request creation.</strong> Go to your GitHub repo: <strong>Settings &gt; Actions &gt; General &gt; Workflow permissions</strong>. Check: <strong>Allow GitHub Actions to create and approve pull requests</strong>. Without this, the resolver agent cannot open a PR and the workflow will fail with a <code>403</code> error.</p>
 </aside>
-<p>The secrets <code>GCS_SKILLS_BUCKET</code>, <code>RESOLVER_AGENT_ID</code>, and <code>CD_AGENT_ID</code> will be added in the next steps after the bucket and agents are created.</p>
+<p>The secrets <code>RESOLVER_AGENT_ID</code> and <code>CD_AGENT_ID</code> will be added in the next steps after the agents are created.</p>
 
 
       </google-codelab-step>
@@ -364,7 +364,7 @@ gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -&gt; /.agent/skills/fi
 <h2 is-upgraded>Open the resolver AGENTS.md</h2>
 <pre><code language="language-bash" class="language-bash">cloudshell edit starter/target-app/.agents/AGENTS.md
 </code></pre>
-<p>You&#39;ll see a <code># TODO</code> comment for the <code>## Rules</code> section. The persona is already filled in.</p>
+<p>You&#39;ll see a <code><!-- TODO --></code> comment for the <code>## Rules</code> section. The persona is already filled in.</p>
 <h2 is-upgraded>TODO - Add the Rules section</h2>
 <p>The rules exist to prevent failure modes that are specific to unrestricted code execution. Without them the agent might: create helper files instead of editing the broken one, patch a symptom without fixing the root cause, or open a PR while tests still fail.</p>
 <p>Each rule maps to one real failure mode:</p>
@@ -400,7 +400,7 @@ gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -&gt; /.agent/skills/fi
 <h2 is-upgraded>Open the resolver SKILL.md</h2>
 <pre><code language="language-bash" class="language-bash">cloudshell edit &#34;starter/target-app/.agents/skills/fix-issue/SKILL.md&#34;
 </code></pre>
-<p>You&#39;ll see two <code># TODO</code> comment blocks: one for <code>## Workflow</code> and one for <code>## Critical rules</code>. The trigger and tools sections at the top are already filled in.</p>
+<p>You&#39;ll see two <code><!-- TODO --></code> comment blocks: one for <code>## Workflow</code> and one for <code>## Critical rules</code>. The trigger and tools sections at the top are already filled in.</p>
 <h2 is-upgraded>TODO - Add the Workflow and Critical Rules</h2>
 <p>The workflow gives the agent a step-by-step runbook for this class of task. Steps 1-3 are orientation before action: the agent must understand the codebase before it touches anything. Step 4 establishes a failure baseline so the agent verifies its fix addresses exactly the right behavior. Step 8 includes the <code>git config</code> lines that are critical: the managed sandbox starts with no git identity configured, and <code>git commit</code> fails without them.</p>
 <p>Replace the <code><!-- TODO --></code> comment inside <code>## Workflow</code> with:</p>
@@ -501,9 +501,6 @@ GCS_SKILLS_BUCKET=$(grep GCS_SKILLS_BUCKET .env | cut -d= -f2)
 gcloud storage buckets create gs://$GCS_SKILLS_BUCKET \
   --location=us-central1 \
   --project=$PROJECT_ID
-</code></pre>
-<p>Add the bucket name as a GitHub secret:</p>
-<pre><code language="language-bash" class="language-bash">gh secret set GCS_SKILLS_BUCKET --body &#34;$GCS_SKILLS_BUCKET&#34;
 </code></pre>
 <p>Upload all AGENTS.md and SKILL.md files:</p>
 <pre><code language="language-bash" class="language-bash">bash setup/upload_skills.sh
@@ -817,7 +814,7 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <h2 is-upgraded>Open the CD AGENTS.md</h2>
 <pre><code language="language-bash" class="language-bash">cloudshell edit starter/cd-agent/AGENTS.md
 </code></pre>
-<p>The persona and 6-step high-level workflow are pre-filled. You&#39;ll see a <code># TODO</code> comment for the <code>## Rules</code> section.</p>
+<p>The persona and 6-step high-level workflow are pre-filled. You&#39;ll see a <code><!-- TODO --></code> comment for the <code>## Rules</code> section.</p>
 <h2 is-upgraded>TODO - Add the CD Rules</h2>
 <p>Replace the <code><!-- TODO --></code> comment with:</p>
 <pre><code language="language-markdown" class="language-markdown">- Always record the stable revision before deploying. Rollback is impossible without it.
@@ -858,7 +855,7 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <h2 is-upgraded>Open the CD SKILL.md</h2>
 <pre><code language="language-bash" class="language-bash">cloudshell edit starter/cd-agent/SKILL.md
 </code></pre>
-<p>The trigger and tools sections are pre-filled. You&#39;ll see two <code># TODO</code> comment blocks: one for <code>## Steps</code> and one for <code>## Critical rules</code>.</p>
+<p>The trigger and tools sections are pre-filled. You&#39;ll see two <code><!-- TODO --></code> comment blocks: one for <code>## Steps</code> and one for <code>## Critical rules</code>.</p>
 <h2 is-upgraded>TODO - Add the Steps and Critical Rules</h2>
 <p>The 12-step workflow covers: authenticate, record stable revision, deploy with <code>--no-traffic</code>, get new revision name, split traffic at 10%, run the monitoring loop with the verdict table, promote or roll back, get the service URL, extract the issue number from the PR body, and post the result.</p>
 <p>Replace the <code><!-- TODO --></code> comment inside <code>## Steps</code> with:</p>
@@ -1092,7 +1089,7 @@ print(&#34;CD agent completed.&#34;, flush=True)
 <pre><code language="language-bash" class="language-bash">gh issue list --state closed
 </code></pre>
 <p>Verify the fix is live in your browser: the track filter should now work.</p>
-<aside class="warning"><p><strong>If the CD agent times out</strong>: This is rare but can happen if Cloud Build takes longer than expected. Re-trigger by re-merging the PR or running <code>uv run python cd-agent/deploy.py <pr_url> <image_url></code> locally.</p>
+<aside class="warning"><p><strong>If the CD agent times out</strong>: This is rare but can happen if Cloud Build takes longer than expected. Re-trigger by re-merging the PR or running <code>uv run python starter/cd-agent/deploy.py <pr_url> <image_url></code> locally.</p>
 </aside>
 
 
