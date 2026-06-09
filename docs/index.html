@@ -684,7 +684,7 @@ Note: recreate agents after changing SKILL.md or AGENTS.md files:
 <p><strong><code>"source": f"gs://.../{agent_home_gcs_prefix}"</code></strong> - the GCS prefix is mounted as a directory, not a single file. Everything under <code>resolver/agent-home/</code> lands at <code>/.agent/</code> in the sandbox: <code>AGENTS.md</code> at <code>/.agent/AGENTS.md</code> and the skill at <code>/.agent/skills/fix-issue/SKILL.md</code>. This is why both files must share one GCS prefix - the API rejects two sources that would share the same top-level target directory.</p>
 <p><strong><code>"target": "/.agent"</code></strong> - the Antigravity harness auto-discovers <code>/.agent/AGENTS.md</code> as the runtime system instruction and loads skill files from <code>/.agent/skills/</code>.</p>
 <p><strong><code>"network": {"allowlist": [{"domain": "*"}]}</code></strong> - network access is disabled by default. The <code>*</code> allowlist enables all outbound connections - required for <code>git clone</code>, <code>git push</code>, and the GitHub MCP server.</p>
-<p>Compare your completed file with <code>setup/create_agents.py</code> - they should be identical.</p>
+<p>Your file is ready to run. Verify it by registering the agents in the next step.</p>
 <h2 is-upgraded>Register agents</h2>
 <p>Run your completed starter file to register both named agents on Gemini Enterprise Agent Platform:</p>
 <pre><code language="language-bash" class="language-bash">uv run python starter/setup/create_agents.py

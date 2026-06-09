@@ -841,7 +841,7 @@ instruction and loads skill files from `/.agent/skills/`.
 **`"network": {"allowlist": [{"domain": "*"}]}`** - network access is disabled by default. The `*` allowlist
 enables all outbound connections - required for `git clone`, `git push`, and the GitHub MCP server.
 
-Compare your completed file with `setup/create_agents.py` - they should be identical.
+Your file is ready to run. Verify it by registering the agents in the next step.
 
 ### Register agents
 

@@ -3,7 +3,7 @@
   "format": "html",
   "prefix": "https://storage.googleapis.com",
   "mainga": "UA-49880327-14",
-  "updated": "2026-06-09T16:32:01+01:00",
+  "updated": "2026-06-09T18:00:29+01:00",
   "id": "managed-agents-issue-resolver",
   "duration": 91,
   "title": "Autonomous GitHub Issue Resolution with the Google Managed Agents API",
