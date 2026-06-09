@@ -891,18 +891,47 @@ Observe: AGENTS.md defines constraints ("never modify files outside target-app/"
 ("1. Read the issue. 2. Clone the repo. 3. Run pytest."). These are separate files that can be updated
 independently and by different teams.
 
-> aside positive
->
-> **Your turn: fill in `starter/setup/create_agents.py`**
->
-> The client initialization, file reads, function signature, and polling loop are pre-filled.
-> Open the file and fill in the three TODOs inside `client.agents.create()`:
->
-> - **TODO 1**: Pass `system_instruction` - the variable holding the AGENTS.md content
-> - **TODO 2**: Add the `tools` list with `code_execution`, `google_search`, and `url_context`
-> - **TODO 3**: Add `base_environment` with a GCS source that mounts `agent_home_gcs_prefix` at `/.agent`, and a network allowlist that allows all domains
->
-> Compare your result with `setup/create_agents.py` when done.
+Open `starter/setup/create_agents.py`. The client initialization, file reads, function signature, and polling loop are pre-filled. Fill in the three TODOs inside `client.agents.create()`:
+
+### TODO 1 - Pass `system_instruction`
+
+The `system_instruction` variable holds the AGENTS.md content read from disk. Pass it directly:
+
+```python
+system_instruction=system_instruction,
+```
+
+### TODO 2 - Add the `tools` list
+
+The Antigravity harness activates three built-in capabilities at agent creation time:
+
+```python
+tools=[
+    {"type": "code_execution"},
+    {"type": "google_search"},
+    {"type": "url_context"},
+],
+```
+
+### TODO 3 - Add `base_environment`
+
+Mount the GCS `agent-home/` prefix at `/.agent` so AGENTS.md and SKILL.md land in the sandbox. Enable outbound network so the agent can clone repos and call the GitHub API:
+
+```python
+base_environment={
+    "type": "remote",
+    "sources": [
+        {
+            "type": "gcs",
+            "source": f"gs://{GCS_SKILLS_BUCKET}/{agent_home_gcs_prefix}",
+            "target": "/.agent",
+        }
+    ],
+    "network": {"allowlist": [{"domain": "*"}]},
+},
+```
+
+Compare your completed file with `setup/create_agents.py` - they should be identical.
 
 ## Deploy the Target App
 
@@ -1005,18 +1034,70 @@ Where AGENTS.md sets boundaries, SKILL.md gives the agent a step-by-step runbook
 
 AGENTS.md and SKILL.md are complementary: AGENTS.md says what the agent MUST NOT do; SKILL.md says what it MUST do, and in what order. The agent cannot deviate from either.
 
-> aside positive
->
-> **Your turn: write the resolver AGENTS.md rules and SKILL.md workflow**
->
-> Open `starter/target-app/.agents/AGENTS.md`. The persona section is pre-filled.
-> Fill in the `## Rules` TODO. Use the table above as a guide - each rule should prevent a specific failure.
->
-> Then open `starter/target-app/.agents/skills/fix-issue/SKILL.md`.
-> Fill in the `## Workflow` TODO (the 6-step sequence) and the `## Critical rules` TODO
-> (the conditions that must hold before a PR is opened).
->
-> Compare with `target-app/.agents/AGENTS.md` and `target-app/.agents/skills/fix-issue/SKILL.md` when done.
+Open `starter/target-app/.agents/AGENTS.md`. The persona section is pre-filled. Fill in the `## Rules` TODO:
+
+### TODO - Add the AGENTS.md rules
+
+Each rule maps to one of the failure modes in the table above:
+
+```markdown
+## Rules
+
+- Never create new files to apply a fix. Edit the file that contains the bug.
+- Never fix a symptom when you can fix the root cause.
+- If tests pass before your change, they must all pass after it too.
+- Do not add comments unless the fix is genuinely non-obvious.
+- Do not refactor, rename, or clean up anything unrelated to the issue.
+- If you cannot confidently locate the bug after exploring the codebase, open a PR describing what you found and stop - do not guess.
+```
+
+Now open `starter/target-app/.agents/skills/fix-issue/SKILL.md`. The trigger and tools sections are pre-filled.
+
+### TODO - Add the SKILL.md workflow and critical rules
+
+Fill in `## Workflow` with the 9-step sequence the agent follows, and `## Critical rules` with the hard constraints that gate the PR:
+
+```markdown
+## Workflow
+
+1. Read the issue using the GitHub MCP server to get the title, body, and number.
+
+2. Clone the repository and read its structure:
+   ```bash
+   git clone <auth_repo_url> /workspace/repo
+   cd /workspace/repo && ls -la
+   ```
+
+3. Install dependencies (check for `requirements.txt`, `package.json`, `pyproject.toml`).
+
+4. Run the existing tests to see the current failure baseline.
+
+5. Diagnose the issue using the symptom-to-location playbook.
+
+6. Write the fix. Change only the code that causes the reported behavior.
+
+7. Run the tests again. If any fail, iterate. Do not open a PR until all pass.
+
+8. Commit and push:
+   ```bash
+   git config user.email "agent@managed-agents.dev"
+   git config user.name "Issue Resolver Agent"
+   git checkout -b fix/issue-<ISSUE_NUMBER>
+   git add -A
+   git commit -m "fix: <description> (closes #<ISSUE_NUMBER>)"
+   git push origin fix/issue-<ISSUE_NUMBER>
+   ```
+
+9. Open a PR via GitHub MCP. Post a comment on the issue with the PR URL.
+
+## Critical rules
+
+- **MANDATORY: run the full test suite before opening a PR.**
+- **Do NOT create new files to apply a fix.**
+- **Do NOT open a PR if any tests fail.** Iterate until they pass.
+```
+
+Compare with `target-app/.agents/AGENTS.md` and `target-app/.agents/skills/fix-issue/SKILL.md` when done.
 
 ### Inspect the data plane call
 
@@ -1062,20 +1143,52 @@ Three design decisions worth noting:
 
 **Why the prompt is so short:** The prompt only carries what changes per invocation: the issue URL and the authenticated clone URL. Everything the agent needs to know about HOW to do the work is already in SKILL.md, mounted in the sandbox. The named agent design means you author the playbook once, not embed it in every API call.
 
-> aside positive
->
-> **Your turn: fill in `starter/resolver/resolve.py`**
->
-> The imports, environment variable reads, and client initialization are pre-filled.
-> Open the file and fill in the two TODOs inside `resolve()`:
->
-> - **TODO 1**: Build `auth_repo_url` (replace `https://` with `https://x-access-token:{GH_TOKEN}@`)
->   and then construct the `prompt` string with both the issue URL and the authenticated clone URL
-> - **TODO 2**: Call `client.interactions.create()` with the agent ID, the prompt, the GitHub MCP
->   server tool (URL, headers with Authorization and X-MCP-Exclude-Tools), and
->   `stream=True, background=True, store=True`. Then iterate the stream and print each event.
->
-> Compare with `resolver/resolve.py` when done.
+Open `starter/resolver/resolve.py`. The imports, environment variable reads, and client initialization are pre-filled. Fill in the two TODOs inside `resolve()`:
+
+### TODO 1 - Build the prompt
+
+Inject the GitHub token into the clone URL so the agent can `git clone` and `git push` without an interactive auth prompt:
+
+```python
+auth_repo_url = REPO_URL.replace("https://", f"https://x-access-token:{GH_TOKEN}@")
+
+prompt = (
+    f"Resolve this GitHub issue: {issue_url}\n"
+    f"Repository clone URL (authenticated): {auth_repo_url}\n\n"
+    f"Use the GitHub MCP server to read the issue and open the PR. "
+    f"Use the authenticated clone URL for git clone and git push."
+)
+```
+
+### TODO 2 - Call the Interactions API
+
+```python
+stream = client.interactions.create(
+    agent=RESOLVER_AGENT_ID,
+    input=prompt,
+    tools=[
+        {
+            "type": "mcp_server",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "name": "github",
+            "headers": {
+                "Authorization": f"Bearer {GH_TOKEN}",
+                "X-MCP-Exclude-Tools": "delete_file",
+            },
+        },
+    ],
+    stream=True,
+    background=True,
+    store=True,
+)
+
+for event in stream:
+    print(str(event)[:300], flush=True)
+
+print("Agent completed.", flush=True)
+```
+
+Compare your completed file with `resolver/resolve.py` when done.
 
 ### Watch the agent work
 
@@ -1259,28 +1372,100 @@ Three MCP servers, each used at a different stage:
 
 **Why the GCP token is in the prompt, not the agent definition:** The access token from `gcloud auth print-access-token` expires in 1 hour and cannot be stored at agent creation time. It is fetched fresh on each `deploy.py` run and passed in the prompt. The agent reads it and sets `CLOUDSDK_AUTH_ACCESS_TOKEN` before running any `gcloud` command.
 
-> aside positive
->
-> **Your turn: fill in the CD agent starter files**
->
-> **`starter/cd-agent/AGENTS.md`**: The persona and 6-step workflow are pre-filled.
-> Fill in the `## Rules` TODO - use the table above as a guide. Each rule should prevent
-> a specific unsafe deployment pattern (missing stable revision, wrong health signal, issue closed prematurely).
->
-> **`starter/cd-agent/SKILL.md`**: The trigger and tools sections are pre-filled.
-> Fill in the `## Steps` TODO (the full canary workflow: authenticate, record stable revision,
-> deploy, split traffic, monitoring loop with verdict table, promote or rollback, report)
-> and the `## Critical rules` TODO.
->
-> **`starter/cd-agent/deploy.py`**: Imports, env vars, GCP token fetch, and client init are pre-filled.
-> Fill in the two TODOs inside `deploy()`:
->
-> - **TODO 1**: Build the `prompt` with the PR URL, image URL, `gcp_token`, `PROJECT_ID`, `REGION`, and `SERVICE_NAME`
-> - **TODO 2**: Call `client.interactions.create()` with the CD agent ID, the prompt, all three MCP
->   servers (GitHub, Cloud Monitoring, Cloud Logging), and `stream=True, background=True, store=True`.
->   Iterate the stream and print each event.
->
-> Compare with `cd-agent/AGENTS.md`, `cd-agent/SKILL.md`, and `cd-agent/deploy.py` when done.
+Open `starter/cd-agent/AGENTS.md`. The persona and 6-step workflow are pre-filled. Fill in `## Rules`:
+
+### TODO - Add the CD AGENTS.md rules
+
+Each rule maps directly to a failure in the table above:
+
+```markdown
+## Rules
+
+- Always record the stable revision before deploying. Rollback is impossible without it.
+- Never use `gcloud logging read` for health decisions. Use Cloud Monitoring MCP for metrics.
+- Never close the issue on rollback. The fix did not reach production.
+- If no linked issue is found in the PR body, skip the GitHub steps entirely.
+```
+
+Now open `starter/cd-agent/SKILL.md`. The trigger and tools sections are pre-filled.
+
+### TODO - Add the SKILL.md steps and critical rules
+
+Fill in `## Steps` with the 11-step canary workflow (authenticate, record stable revision, deploy with `--no-traffic`, get new revision name, split traffic at 10%, monitoring loop with verdict table, promote or rollback, get service URL, extract issue number from PR, post result, close or comment) and `## Critical rules` with the three hard constraints.
+
+The monitoring verdict table belongs inside the loop:
+
+```markdown
+| Condition | Verdict |
+|---|---|
+| canary_total < 5 | HOLD |
+| canary_error_rate > 0.05 AND > stable_error_rate * 2 | ROLLBACK |
+| canary_error_rate <= 0.05 | OK |
+| Two consecutive HOLDs | ROLLBACK |
+```
+
+Compare with `cd-agent/SKILL.md` when done.
+
+Now open `starter/cd-agent/deploy.py`. Imports, env vars, GCP token fetch, and client initialization are pre-filled.
+
+### TODO 1 - Build the deployment prompt
+
+Everything the agent cannot know from SKILL.md must arrive via the prompt:
+
+```python
+prompt = (
+    f"Deploy this merged PR to Cloud Run: {pr_url}\n"
+    f"Container image (already built): {image_url}\n"
+    f"GCP access token: {gcp_token}\n"
+    f"Project: {PROJECT_ID}\n"
+    f"Region: {REGION}\n"
+    f"Service: {SERVICE_NAME}\n\n"
+    f"Follow the canary deploy skill. Monitor for 5 minutes, then promote or rollback. "
+    f"Close the linked GitHub issue on success."
+)
+```
+
+### TODO 2 - Call the Interactions API with three MCP servers
+
+```python
+stream = client.interactions.create(
+    agent=CD_AGENT_ID,
+    input=prompt,
+    tools=[
+        {
+            "type": "mcp_server",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "name": "github",
+            "headers": {
+                "Authorization": f"Bearer {GH_TOKEN}",
+                "X-MCP-Exclude-Tools": "delete_file",
+            },
+        },
+        {
+            "type": "mcp_server",
+            "url": "https://monitoring.googleapis.com/mcp",
+            "name": "cloudmonitoring",
+            "headers": {"Authorization": f"Bearer {gcp_token}"},
+        },
+        {
+            "type": "mcp_server",
+            "url": "https://logging.googleapis.com/mcp",
+            "name": "cloudlogging",
+            "headers": {"Authorization": f"Bearer {gcp_token}"},
+        },
+    ],
+    stream=True,
+    background=True,
+    store=True,
+)
+
+for event in stream:
+    print(str(event)[:300], flush=True)
+
+print("CD agent completed.", flush=True)
+```
+
+Compare your completed file with `cd-agent/deploy.py` when done.
 
 ### What the CD agent does
 

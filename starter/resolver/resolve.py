@@ -35,7 +35,7 @@ def resolve(issue_url: str):
     # - store=True    (persist for potential multi-turn follow-up)
     #
     # Then iterate over the stream and print each event (truncated to 300 chars).
-    pass
+    print("TODO: implement the Interactions API call in resolve()", flush=True)
 
 
 if __name__ == "__main__":

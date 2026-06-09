@@ -43,7 +43,7 @@ def deploy(pr_url: str, image_url: str):
     # - stream=True, background=True, store=True (same pattern as resolve.py)
     #
     # Then iterate over the stream and print each event.
-    pass
+    print("TODO: implement the Interactions API call in deploy()", flush=True)
 
 
 if __name__ == "__main__":
