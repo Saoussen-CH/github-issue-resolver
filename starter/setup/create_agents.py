@@ -22,8 +22,8 @@ client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
 
 _root = Path(__file__).parent.parent
 
-RESOLVER_AGENTS_MD = (_root / "target-app/.agents/AGENTS.md").read_text()
-CD_AGENTS_MD = (_root / "cd-agent/AGENTS.md").read_text()
+RESOLVER_AGENTS_MD = (_root / "starter/target-app/.agents/AGENTS.md").read_text()
+CD_AGENTS_MD = (_root / "starter/cd-agent/AGENTS.md").read_text()
 
 
 def create_agent(

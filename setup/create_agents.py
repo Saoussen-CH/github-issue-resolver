@@ -23,12 +23,16 @@ client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
 
 _root = Path(__file__).parent.parent
 
-RESOLVER_AGENTS_MD = (_root / "target-app/.agents/AGENTS.md").read_text()
-CD_AGENTS_MD = (_root / "cd-agent/AGENTS.md").read_text()
+RESOLVER_AGENTS_MD = (_root / "starter/target-app/.agents/AGENTS.md").read_text()
+CD_AGENTS_MD = (_root / "starter/cd-agent/AGENTS.md").read_text()
 
 
-def create_agent(agent_id: str, description: str, system_instruction: str, skill_gcs_prefix: str) -> str:
-    # Skip if agent already exists
+def create_agent(
+    agent_id: str,
+    description: str,
+    system_instruction: str,
+    agent_home_gcs_prefix: str,
+) -> str:
     try:
         existing = client.agents.get(id=agent_id)
         if existing.id:
@@ -53,8 +57,8 @@ def create_agent(agent_id: str, description: str, system_instruction: str, skill
             "sources": [
                 {
                     "type": "gcs",
-                    "source": f"gs://{GCS_SKILLS_BUCKET}/{skill_gcs_prefix}",
-                    "target": f"/.agent/skills/{skill_gcs_prefix.split('/')[-1]}",
+                    "source": f"gs://{GCS_SKILLS_BUCKET}/{agent_home_gcs_prefix}",
+                    "target": "/.agent",
                 }
             ],
             "network": {"allowlist": [{"domain": "*"}]},
@@ -77,14 +81,14 @@ resolver_id = create_agent(
     agent_id="managed-issue-resolver",
     description="Reads a GitHub issue, fixes the bug in the repo, runs tests, opens a PR.",
     system_instruction=RESOLVER_AGENTS_MD,
-    skill_gcs_prefix="resolver/skills/fix-issue",
+    agent_home_gcs_prefix="resolver/agent-home",
 )
 
 cd_id = create_agent(
     agent_id="managed-issue-cd",
     description="Canary-deploys a fix to Cloud Run, monitors error rate, promotes or rolls back.",
     system_instruction=CD_AGENTS_MD,
-    skill_gcs_prefix="cd-agent/skills/deploy",
+    agent_home_gcs_prefix="cd-agent/agent-home",
 )
 
 print("")

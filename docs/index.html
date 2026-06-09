@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
   <meta name="theme-color" content="#4F7DC9">
   <meta charset="UTF-8">
-  <title>Autonomous GitHub Issue Resolution with Google Managed Agents API</title>
+  <title>Autonomous GitHub Issue Resolution with the Google Managed Agents API</title>
   <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
   <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
   <link rel="stylesheet" href="https://storage.googleapis.com/claat-public/codelab-elements.css">
@@ -24,7 +24,7 @@
   <google-codelab codelab-gaid="UA-52746336-1"
                   codelab-ga4id=""
                   id="managed-agents-issue-resolver"
-                  title="Autonomous GitHub Issue Resolution with Google Managed Agents API"
+                  title="Autonomous GitHub Issue Resolution with the Google Managed Agents API"
                   environment="web"
                   feedback-link="https://github.com/googlecodelabs/feedback/issues/new?title=[managed-agents-issue-resolver]">
     
@@ -44,7 +44,7 @@
 
         <p>In this codelab you will build <strong>Managed Issue Resolver</strong>: a system that autonomously resolves GitHub issues and deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Gemini Enterprise Agent Platform.</p>
 <p>Label any issue <code>ai-resolve</code>. A managed agent reads the issue via GitHub MCP, clones the repo, reproduces the failure, fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, then promotes or rolls back automatically.</p>
-<p>No orchestration framework. No LLM wrappers. No custom sandboxes. The Managed Agents API provisions the sandbox, runs the model, executes code, and streams results. You bring two AGENTS.md files, two SKILL.md files, two GitHub Actions workflows, and three hosted MCP servers.</p>
+<p>No orchestration framework. No LLM wrappers. No custom sandboxes. The platform provisions the sandbox, runs the model, executes code, and streams results. You bring two AGENTS.md files, two SKILL.md files, two Python scripts, and three hosted MCP servers.</p>
 <h2 is-upgraded>What you&#39;ll build</h2>
 <pre><code language="language-mermaid" class="language-mermaid">flowchart TD
     A([Issue labeled ai-resolve]) --&gt; B
@@ -105,17 +105,16 @@
 <p>The agent reads the issue, finds the root cause, fixes the code, and opens a PR. You review and merge it. The CD agent deploys the fix automatically.</p>
 <h2 class="checklist" is-upgraded>What you&#39;ll learn</h2>
 <ul class="checklist">
-<li>Distinguish the <strong>Agents API</strong> (control plane: create, configure, and manage named agents) from the <strong>Interactions API</strong> (data plane: invoke agents at runtime) and understand when each is called.</li>
-<li>Configure the <strong>Antigravity harness</strong> (<code>base_agent: antigravity-preview-05-2026</code>) with built-in tools, GCS-mounted skill files, and domain-level network access controls.</li>
-<li>Write <strong>AGENTS.md</strong> (system instruction: agent identity and constraints) and <strong>SKILL.md</strong> (operational playbook: step-by-step procedure) and understand why they are stored and updated differently.</li>
-<li>Run long-running agent tasks with the <strong>Managed Agents API</strong> using background execution (<code>background=True</code>), event streaming (<code>stream=True</code>), and interaction persistence (<code>store=True</code>).</li>
-<li>Attach <strong>hosted MCP servers</strong> (GitHub, Cloud Monitoring, Cloud Logging) to agent interactions at call time, with no deployment and no custom integration code.</li>
-<li>Implement <strong>canary traffic splitting</strong> on Cloud Run with automated monitoring, promotion, and rollback driven entirely by an agent.</li>
+<li>Write <strong>AGENTS.md</strong> (agent identity and constraints) and <strong>SKILL.md</strong> (step-by-step playbook), and understand why they are separate files owned by different teams.</li>
+<li>Use the <strong>Agents API</strong> (control plane) to register named agents once, with GCS-mounted skill files and built-in tools.</li>
+<li>Use the <strong>Interactions API</strong> (data plane) to invoke agents at runtime with <code>background=True</code>, <code>stream=True</code>, and <code>store=True</code>.</li>
+<li>Attach <strong>hosted MCP servers</strong> (GitHub, Cloud Monitoring, Cloud Logging) at call time with no deployment required.</li>
+<li>Implement <strong>canary traffic splitting</strong> on Cloud Run with automated promotion and rollback driven by an agent.</li>
 </ul>
 <h2 is-upgraded>What you&#39;ll need</h2>
 <ul>
 <li>A Google Cloud project with billing enabled</li>
-<li>A GitHub account and a public GitHub repository</li>
+<li>A GitHub account</li>
 <li>The <code>gcloud</code> CLI and <code>gh</code> CLI installed and authenticated</li>
 <li>Python 3.11+ and <code>uv</code> installed</li>
 </ul>
@@ -124,7 +123,7 @@
       </google-codelab-step>
     
       <google-codelab-step label="Set Up Your Environment" duration="15">
-        <p>For this codelab, you&#39;ll use Cloud Shell or your local terminal. By the end of this step you&#39;ll have the repo cloned, your GCP project configured, all required APIs enabled, a <code>.env</code> file filled in, a service account created, and GitHub secrets set.</p>
+        <p>For this codelab you&#39;ll use Cloud Shell or your local terminal. By the end of this step you&#39;ll have the repo cloned, your GCP project configured, all required APIs enabled, a <code>.env</code> file filled in, a service account created, and GitHub secrets set.</p>
 <h2 is-upgraded>What is Cloud Shell?</h2>
 <p>Cloud Shell is a free browser-based Linux terminal with <code>gcloud</code>, <code>git</code>, <code>gh</code>, <code>uv</code>, and Python pre-installed. You don&#39;t need to install anything locally to complete this codelab.</p>
 <p>To open Cloud Shell, click the terminal icon in the top-right toolbar of the GCP Console. When prompted, click <strong>Authorize</strong> to allow Cloud Shell to make Google Cloud API calls.</p>
@@ -133,16 +132,25 @@
 <aside class="special"><p><strong>Prefer your local terminal?</strong> You&#39;ll need <code>gcloud</code> CLI, <code>gh</code> CLI, <code>uv</code>, and Python 3.11+ installed. Everything else in this codelab runs identically.</p>
 </aside>
 <h2 is-upgraded>Clone the repository</h2>
-<pre><code language="language-bash" class="language-bash">git clone https://github.com/Saoussen-CH/managed-issue-resolver.git
+<p>The workshop materials and starter files live on the <code>codelab-workshop</code> branch. Clone that branch and create a local <code>master</code> branch from it - your GitHub repo will use <code>master</code> as its default so the GitHub Actions workflows trigger correctly:</p>
+<pre><code language="language-bash" class="language-bash">git clone --branch codelab-workshop https://github.com/Saoussen-CH/managed-issue-resolver.git
 cd managed-issue-resolver
+git checkout -b master
 </code></pre>
-<aside class="special"><p><strong>Using this for a demo?</strong> The repo ships with a working target app and seeded bugs. The <code>setup/</code> directory contains everything you need to configure and reset the demo (no manual file editing required).</p>
+<aside class="special"><p><strong>Why </strong><strong><code>git checkout -b master</code></strong><strong>?</strong> The <code>deploy.yml</code> workflow triggers on PRs merged to <code>master</code>. Creating a local <code>master</code> branch now means when you push to your own GitHub repo in the next step, <code>master</code> becomes the default branch and all workflows fire as expected.</p>
+</aside>
+<h2 is-upgraded>Create your GitHub repo</h2>
+<p>Push the codelab content to your own GitHub repo so GitHub Actions can run:</p>
+<pre><code language="language-bash" class="language-bash">gh auth login
+gh repo create managed-issue-resolver --public --source=. --remote=origin --push
+</code></pre>
+<aside class="special"><p><strong>Why public?</strong> The <code>GITHUB_TOKEN</code> that GitHub Actions provides automatically has <code>contents: write</code> and <code>pull-requests: write</code> permissions by default on public repos. Private repos require additional configuration.</p>
 </aside>
 <h2 is-upgraded>Authenticate and configure your project</h2>
 <pre><code language="language-bash" class="language-bash">gcloud auth login
 gcloud auth application-default login
 </code></pre>
-<aside class="special"><p><strong>Why two auth commands? </strong><code>gcloud auth login</code> authenticates the CLI. <code>gcloud auth application-default login</code> creates credentials that Python scripts (like <code>create_agents.py</code> and <code>deploy.py</code>) use to call Google Cloud APIs. Without the second command, the agent SDK fails with a missing credentials error at runtime.</p>
+<aside class="special"><p><strong>Why two auth commands? </strong><code>gcloud auth login</code> authenticates the CLI. <code>gcloud auth application-default login</code> creates credentials that Python scripts (<code>create_agents.py</code>, <code>deploy.py</code>) use to call Google Cloud APIs. Without the second command, the agent SDK fails with a missing credentials error at runtime.</p>
 </aside>
 <p>Then set your project:</p>
 <pre><code language="language-bash" class="language-bash">export PROJECT_ID=$(gcloud config get-value project)
@@ -164,7 +172,7 @@ echo &#34;Project: $PROJECT_ID&#34;
     --project $PROJECT_ID
 </code></pre>
 <p>This takes about 1 minute. You&#39;ll see <code>Operation finished successfully</code> when done.</p>
-<aside class="special"><p><strong>Why these APIs? </strong><code>aiplatform.googleapis.com</code> is the Managed Agents API. The rest support Cloud Run deployment (<code>run</code>, <code>cloudbuild</code>, <code>artifactregistry</code>), skill storage (<code>storage</code>), and the hosted MCP servers for monitoring and logging.</p>
+<aside class="special"><p><strong>Why these APIs? </strong><code>aiplatform.googleapis.com</code> is the Managed Agents API. The rest support Cloud Run deployment (<code>run</code>, <code>cloudbuild</code>, <code>artifactregistry</code>), skill file storage (<code>storage</code>), and the hosted MCP servers for monitoring and logging.</p>
 </aside>
 <h2 is-upgraded>Fill in .env</h2>
 <pre><code language="language-bash" class="language-bash">cp .env.example .env
@@ -173,11 +181,11 @@ echo &#34;Project: $PROJECT_ID&#34;
 <pre><code>GOOGLE_CLOUD_PROJECT=your-project-id
 GCS_SKILLS_BUCKET=managed-issue-resolver-skills-your-project-id
 </code></pre>
+<aside class="warning"><p><strong>Pick a globally unique bucket name.</strong> GCS bucket names are global, so <code>my-bucket</code> will likely be taken. A safe pattern: <code>managed-issue-resolver-skills-{PROJECT_ID}</code>.</p>
+</aside>
 <p>Install Python dependencies:</p>
 <pre><code language="language-bash" class="language-bash">uv sync
 </code></pre>
-<aside class="warning"><p><strong>Pick a globally unique bucket name.</strong> GCS bucket names are global, so <code>my-bucket</code> will likely be taken. A safe pattern: <code>managed-issue-resolver-skills-{PROJECT_ID}</code>.</p>
-</aside>
 <h2 is-upgraded>Create a service account</h2>
 <p>The GitHub Actions workflows need GCP credentials to call the Managed Agents API, build Docker images, and deploy to Cloud Run. Create a dedicated service account with the exact roles needed:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
@@ -228,271 +236,89 @@ gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34;
 <p><code>GITHUB_TOKEN</code> is provided automatically by GitHub Actions (no action needed).</p>
 <aside class="warning"><p><strong>Allow pull request creation.</strong> Go to your GitHub repo: <strong>Settings &gt; Actions &gt; General &gt; Workflow permissions</strong>. Check: <strong>Allow GitHub Actions to create and approve pull requests</strong>. Without this, the resolver agent cannot open a PR and the workflow will fail with a <code>403</code> error.</p>
 </aside>
-<p>The secrets <code>GCS_SKILLS_BUCKET</code>, <code>RESOLVER_AGENT_ID</code>, and <code>CD_AGENT_ID</code> will be added in the next step after the bucket and agents are created.</p>
+<p>The secrets <code>GCS_SKILLS_BUCKET</code>, <code>RESOLVER_AGENT_ID</code>, and <code>CD_AGENT_ID</code> will be added in the next steps after the bucket and agents are created.</p>
 
 
       </google-codelab-step>
     
-      <google-codelab-step label="Understand the Architecture" duration="15">
-        <p>Before writing any code, let&#39;s understand what the Managed Agents API is and the five concepts that make this system work: the Antigravity harness, the Agents API control plane, the Interactions API data plane, AGENTS.md vs SKILL.md, and hosted MCP servers.</p>
-<h2 is-upgraded>What is the Managed Agents API?</h2>
-<p>Most LLM APIs give you a text-in, text-out interface: you send a prompt, the model generates a response, done. That&#39;s enough for summarization or Q&amp;A. It&#39;s not enough for resolving a GitHub issue - the agent needs to clone a repo, run tests, write files, and open a PR. For that, the model needs real compute.</p>
-<p>The <strong>Managed Agents API</strong> (part of Gemini Enterprise Agent Platform) is an API that runs a Gemini model inside a fully provisioned Ubuntu sandbox. The model and the compute environment are co-located: the model can run <code>bash</code>, execute Python, call <code>git</code>, run <code>pytest</code>, and make HTTP requests as part of a single interaction.</p>
+      <google-codelab-step label="What is the Managed Agents API?" duration="5">
+        <p>Before writing any code, let&#39;s understand the platform you are building on.</p>
+<p>Most LLM APIs give you text-in, text-out: you send a prompt, the model returns a response. That is enough for summarization or Q&amp;A. It is not enough for resolving a GitHub issue - the agent needs to clone a repo, run tests, write files, and open a PR. For that, the model needs real compute.</p>
+<p>The <strong>Managed Agents API</strong> (part of Gemini Enterprise Agent Platform) runs a Gemini model inside a fully provisioned Ubuntu sandbox. The model and the compute environment are co-located: the model can run <code>bash</code>, execute Python, call <code>git</code>, run <code>pytest</code>, and make HTTP requests as part of a single interaction.</p>
 <pre><code>Your code (GitHub Actions workflow)
         │
-        │  POST /v1beta1/projects/.../agents/{id}/interactions
-        │  { &#34;input&#34;: &#34;Fix issue #42&#34;, &#34;tools&#34;: [GitHub MCP, ...] }
+        │  client.interactions.create(agent=&#34;managed-issue-resolver&#34;, ...)
         ▼
   Gemini Enterprise Agent Platform
         │
-        ├─ provisions sandboxed Ubuntu VM
-        ├─ mounts skill files from GCS
-        ├─ starts Gemini Model Runtime alongside the compute
+        ├─ provisions sandboxed Ubuntu environment
+        ├─ mounts skill files from GCS at /.agent/
+        ├─ starts Gemini model alongside the compute
         │
         │  agent reasons → calls bash → runs pytest → edits files → calls GitHub MCP → opens PR
         │
         └─ streams interaction events back to your workflow
 </code></pre>
-<p><strong>Key advantages over rolling your own agent:</strong></p>
+<p><strong>Why not roll your own?</strong></p>
 <table>
 <tr><td colspan="1" rowspan="1"></td><td colspan="1" rowspan="1"><p>Managed Agents API</p>
 </td><td colspan="1" rowspan="1"><p>Self-hosted (e.g., LangChain + Docker)</p>
 </td></tr>
 <tr><td colspan="1" rowspan="1"><p>Infrastructure</p>
-</td><td colspan="1" rowspan="1"><p>Zero - platform provisions sandboxes on demand</p>
-</td><td colspan="1" rowspan="1"><p>You build, deploy, and scale the execution environment</p>
+</td><td colspan="1" rowspan="1"><p>Zero - platform provisions on demand</p>
+</td><td colspan="1" rowspan="1"><p>You build, deploy, and scale execution environments</p>
 </td></tr>
 <tr><td colspan="1" rowspan="1"><p>Sandbox security</p>
 </td><td colspan="1" rowspan="1"><p>Isolated per interaction, auto-cleaned</p>
 </td><td colspan="1" rowspan="1"><p>You manage isolation</p>
 </td></tr>
 <tr><td colspan="1" rowspan="1"><p>Long-running tasks</p>
-</td><td colspan="1" rowspan="1"><p>Background execution with <code>background=True</code>, up to 15 min</p>
+</td><td colspan="1" rowspan="1"><p>Background execution, up to 15 min</p>
 </td><td colspan="1" rowspan="1"><p>You handle timeouts and polling</p>
 </td></tr>
 <tr><td colspan="1" rowspan="1"><p>MCP integration</p>
 </td><td colspan="1" rowspan="1"><p>Hosted MCP servers passed at call time</p>
 </td><td colspan="1" rowspan="1"><p>You deploy or proxy MCP servers</p>
 </td></tr>
-<tr><td colspan="1" rowspan="1"><p>Environment snapshots</p>
-</td><td colspan="1" rowspan="1"><p>Auto-snapshot on idle, retained 7 days</p>
-</td><td colspan="1" rowspan="1"><p>You manage state persistence</p>
-</td></tr>
 <tr><td colspan="1" rowspan="1"><p>SDK</p>
-</td><td colspan="1" rowspan="1"><p><code>google-genai</code> with <code>vertexai=True</code>, three lines to invoke</p>
+</td><td colspan="1" rowspan="1"><p>Three lines to invoke</p>
 </td><td colspan="1" rowspan="1"><p>Framework-specific, more code</p>
 </td></tr>
 </table>
-<p>The Antigravity agent is also available directly via the Gemini API (<code>genai.Client()</code>, authenticated with <code>GEMINI_API_KEY</code>). This project uses the <strong>Vertex AI endpoint</strong> (<code>vertexai=True</code>) to stay within your GCP project&#39;s IAM, billing, and audit controls - the same <code>google-genai</code> SDK, a different authentication path.</p>
-<pre><code language="language-python" class="language-python">from google import genai
-
-client = genai.Client(vertexai=True, project=PROJECT_ID, location=&#34;global&#34;)
-
-# Invoke an agent - the platform does the rest
-stream = client.interactions.create(
-    agent=&#34;managed-issue-resolver&#34;,   # named agent ID
-    input=prompt,                      # what to do
-    tools=[github_mcp_server],         # external tools to connect
-    stream=True,                       # stream events as they happen
-    background=True,                   # don&#39;t block while agent runs
-    store=True,                        # persist interaction for multi-turn
-)
-</code></pre>
-<h2 is-upgraded>Concept: The Antigravity Harness</h2>
-<p>Every managed agent runs on the <strong>Antigravity harness</strong> - the execution engine that powers Gemini Enterprise Agent Platform. The <code>base_agent</code> field in <code>client.agents.create()</code> names the harness version:</p>
+<h2 is-upgraded>Two APIs, two planes</h2>
+<p>The system is split into a <strong>control plane</strong> and a <strong>data plane</strong>. This is the most important design concept in the whole codelab.</p>
+<p><strong>Agents API (control plane):</strong> Creates and configures named agents. Runs once during setup.</p>
 <pre><code language="language-python" class="language-python">client.agents.create(
     id=&#34;managed-issue-resolver&#34;,
-    base_agent=&#34;antigravity-preview-05-2026&#34;,   # harness version
-    ...
-)
-</code></pre>
-<p>The Antigravity harness is built on <strong>Gemini 3.5 Flash</strong> - a model designed specifically for long-horizon agentic and coding tasks, and 4x faster than comparable frontier models in token output speed. The model and compute environment are co-optimized: Gemini 3.5 Flash is not a general-purpose model adapted for agents, it is a model built from the ground up to reason, execute code, and manage multi-step workflows.</p>
-<p>The critical design detail: the Gemini model and your code run <strong>in the same sandbox</strong>. There are no network round-trips between the model&#39;s reasoning and code execution. When the model decides to run <code>pytest</code>, it calls <code>bash</code> directly inside the sandbox.</p>
-<p>Pre-installed software in every sandbox (Vertex AI Agent Platform):</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Software</p>
-</td><td colspan="1" rowspan="1"><p>Version</p>
-</td><td colspan="1" rowspan="1"><p>Used by this project</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Python</p>
-</td><td colspan="1" rowspan="1"><p>3.11</p>
-</td><td colspan="1" rowspan="1"><p>Running pytest, executing fix scripts</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Node.js</p>
-</td><td colspan="1" rowspan="1"><p>20</p>
-</td><td colspan="1" rowspan="1"><p>Available for JavaScript projects</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>gcloud CLI</p>
-</td><td colspan="1" rowspan="1"><p>Latest</p>
-</td><td colspan="1" rowspan="1"><p>Cloud Run, Cloud Build, and GCS operations</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>git</p>
-</td><td colspan="1" rowspan="1"><p>Latest</p>
-</td><td colspan="1" rowspan="1"><p>Cloning repos, pushing fix branches</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>curl / wget / jq</p>
-</td><td colspan="1" rowspan="1"><p>Latest</p>
-</td><td colspan="1" rowspan="1"><p>HTTP requests, JSON processing</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>ripgrep / fd / tree</p>
-</td><td colspan="1" rowspan="1"><p>Latest</p>
-</td><td colspan="1" rowspan="1"><p>Fast file search and directory listing</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>numpy, pandas</p>
-</td><td colspan="1" rowspan="1"><p>Latest</p>
-</td><td colspan="1" rowspan="1"><p>Available for data-processing agents</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>google-genai SDK</p>
-</td><td colspan="1" rowspan="1"><p>Latest</p>
-</td><td colspan="1" rowspan="1"><p>Available inside the sandbox for agent sub-calls</p>
-</td></tr>
-</table>
-<aside class="special"><p><strong>Version note:</strong> The Gemini API (non-Vertex) sandbox uses Python 3.12 and Node.js 22. The Vertex AI Agent Platform sandbox uses Python 3.11 and Node.js 20. Both ship the same UNIX tooling and Python packages. The agent can install additional packages at runtime with <code>pip install</code> or <code>npm install</code>. Installed packages persist when you reuse the same <code>environment_id</code>.</p>
-</aside>
-<p>Built-in tools are configured at agent creation via the <code>tools</code> list:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Tool type</p>
-</td><td colspan="1" rowspan="1"><p>What the agent gains</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>code_execution</code></p>
-</td><td colspan="1" rowspan="1"><p>Run shell commands (bash, Python, Node.js) with stdout/stderr capture</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>google_search</code></p>
-</td><td colspan="1" rowspan="1"><p>Web search from inside the sandbox</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>url_context</code></p>
-</td><td colspan="1" rowspan="1"><p>Fetch and read web pages</p>
-</td></tr>
-</table>
-<aside class="special"><p><strong><code>{"type": "filesystem"}</code></strong><strong> is a valid tool type on the Vertex AI Agent Platform.</strong> It grants the agent explicit read, write, and list access to the sandbox filesystem. This project omits it because the harness already allows filesystem operations via <code>code_execution</code> (bash calls like <code>cat</code>, <code>ls</code>, <code>cp</code>). Use <code>{"type": "filesystem"}</code> when you want the agent to use structured file-tool calls instead of bash.</p>
-</aside>
-<p><strong>Sandbox TTL:</strong> Each sandbox auto-snapshots after 15 minutes of idle and is retained for 7 days. For multi-turn interactions, pass <code>environment=<env_id></code> and <code>previous_interaction_id=<interaction_id></code> to resume the same sandbox in a follow-up call.</p>
-<p><strong>Network access:</strong> On the Vertex AI Agent Platform, <strong>network access is disabled by default.</strong> Every agent runs in a sandbox with no outbound connectivity unless you explicitly configure an allowlist. Our project sets <code>{"domain": "*"}</code> to permit all outbound traffic. In enterprise environments, replace <code>*</code> with specific domains to enforce a tight egress policy:</p>
-<pre><code language="language-python" class="language-python">&#34;network&#34;: {
-    &#34;allowlist&#34;: [
-        {&#34;domain&#34;: &#34;api.github.com&#34;},   # GitHub API only
-        {&#34;domain&#34;: &#34;pypi.org&#34;},          # pip installs only
-    ]
-}
-</code></pre>
-<p>You can also inject credentials per-domain via <code>transform</code>. Credentials are injected by the egress proxy and are <strong>never exposed inside the sandbox</strong> as environment variables or files:</p>
-<pre><code language="language-python" class="language-python">&#34;network&#34;: {
-    &#34;allowlist&#34;: [
-        {
-            &#34;domain&#34;: &#34;api.github.com&#34;,
-            &#34;transform&#34;: {&#34;Authorization&#34;: &#34;Bearer ghp_...&#34;},  # injected by egress proxy
-        }
-    ]
-}
-</code></pre>
-<aside class="special"><p><strong>Why pin the harness version?</strong> Using <code>base_agent="antigravity-preview-05-2026"</code> pins your agents to a specific harness version. Your agents always run on the same execution environment unless you explicitly recreate them with a newer <code>base_agent</code>. This makes upgrade decisions explicit and predictable for production workloads.</p>
-</aside>
-<h2 is-upgraded>Concept: Agents API (Control Plane) and Interactions API (Data Plane)</h2>
-<p>A naive approach would configure the agent inline with every API call, re-sending the full system prompt, tool list, and environment config each time. That works for simple tasks but creates redundancy, blocks on environment provisioning on every run, and couples your application code to prompt content.</p>
-<p>The two-plane design solves this. Configuration is registered once on the control plane as a <strong>named agent</strong> and referenced by a stable ID on the data plane.</p>
-<p><strong>Agents API - the control plane:</strong></p>
-<p>The Agents API manages named agent lifecycle. These calls happen during setup, not during every workflow run:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Operation</p>
-</td><td colspan="1" rowspan="1"><p>SDK call</p>
-</td><td colspan="1" rowspan="1"><p>When</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Create a named agent</p>
-</td><td colspan="1" rowspan="1"><p><code>client.agents.create(id=..., ...)</code></p>
-</td><td colspan="1" rowspan="1"><p>Once, during initial setup</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Read agent config</p>
-</td><td colspan="1" rowspan="1"><p><code>client.agents.get(id=...)</code></p>
-</td><td colspan="1" rowspan="1"><p>To inspect or verify configuration</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>List all agents</p>
-</td><td colspan="1" rowspan="1"><p><code>client.agents.list()</code></p>
-</td><td colspan="1" rowspan="1"><p>To audit agents in the project</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Update config</p>
-</td><td colspan="1" rowspan="1"><p>REST PATCH with <code>?update_mask=system_instruction</code></p>
-</td><td colspan="1" rowspan="1"><p>When changing identity or tools</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Delete an agent</p>
-</td><td colspan="1" rowspan="1"><p><code>client.agents.delete(id=...)</code></p>
-</td><td colspan="1" rowspan="1"><p>During cleanup</p>
-</td></tr>
-</table>
-<p>Most control plane calls are <strong>long-running operations (LROs)</strong>. <code>client.agents.create()</code> provisions a base environment snapshot and waits for it to be ready before returning.</p>
-<pre><code language="language-python" class="language-python"># Control plane: runs once in setup/create_agents.py
-from google import genai
-
-client = genai.Client(vertexai=True, project=PROJECT_ID, location=&#34;global&#34;)
-
-client.agents.create(
-    id=&#34;managed-issue-resolver&#34;,
     base_agent=&#34;antigravity-preview-05-2026&#34;,
-    description=&#34;Reads a GitHub issue, fixes the bug, runs tests, opens a PR.&#34;,
-    system_instruction=agents_md_content,            # content of AGENTS.md
-    tools=[
-        {&#34;type&#34;: &#34;code_execution&#34;},
-        {&#34;type&#34;: &#34;google_search&#34;},
-        {&#34;type&#34;: &#34;url_context&#34;},
-    ],
-    base_environment={
-        &#34;type&#34;: &#34;remote&#34;,
-        &#34;sources&#34;: [
-            {
-                &#34;type&#34;: &#34;gcs&#34;,
-                # agent-home/ contains AGENTS.md and skills/ - single source
-                # required: API rejects two sources sharing the same top-level dir
-                &#34;source&#34;: f&#34;gs://{BUCKET}/resolver/agent-home&#34;,
-                &#34;target&#34;: &#34;/.agent&#34;,  # AGENTS.md -&gt; /.agent/AGENTS.md
-                                      # skills/   -&gt; /.agent/skills/
-            }
-        ],
-        &#34;network&#34;: {&#34;allowlist&#34;: [{&#34;domain&#34;: &#34;*&#34;}]},   # enable outbound HTTP
-    },
+    system_instruction=agents_md_content,   # who the agent is
+    tools=[...],                             # built-in capabilities
+    base_environment={...},                  # GCS skill files + network rules
 )
 </code></pre>
-<p><strong>Interactions API - the data plane:</strong></p>
-<p>The Interactions API invokes a named agent for a specific task. Every GitHub Actions run calls this:</p>
-<pre><code language="language-python" class="language-python"># Data plane: runs on every workflow trigger in resolver/resolve.py
-stream = client.interactions.create(
-    agent=RESOLVER_AGENT_ID,   # reference to the named agent
-    input=prompt,              # the task for this interaction
-    tools=[                    # MCP servers attached at call time
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
-            &#34;name&#34;: &#34;github&#34;,
-            &#34;headers&#34;: {
-                &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
-                &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,
-            },
-        },
-    ],
-    stream=True,       # yield events as the agent works
-    background=True,   # return immediately; agent runs asynchronously
-    store=True,        # persist interaction for potential multi-turn follow-up
+<p><strong>Interactions API (data plane):</strong> Invokes a named agent for a specific task. Runs on every workflow trigger.</p>
+<pre><code language="language-python" class="language-python">stream = client.interactions.create(
+    agent=&#34;managed-issue-resolver&#34;,   # references the named agent by ID
+    input=prompt,                      # the task for this run
+    tools=[github_mcp_server],         # per-run tools (GitHub token changes every run)
+    stream=True, background=True, store=True,
 )
+</code></pre>
+<p>The named agent ID is the bridge: created once on the control plane, referenced many times on the data plane. Configuration is registered once; invocation is lightweight.</p>
+<aside class="special"><p><strong>Why is GitHub MCP at interaction time?</strong> The GitHub token comes from the GitHub Actions runner and is different for every repository and every run. It cannot be baked into the named agent at creation time.</p>
+</aside>
 
-for event in stream:
-    print(event)  # interaction.created, message.delta, tool.call, interaction.completed
-</code></pre>
-<p>Key interaction parameters:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Parameter</p>
-</td><td colspan="1" rowspan="1"><p>Why this project uses it</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>background=True</code></p>
-</td><td colspan="1" rowspan="1"><p>Agent tasks run up to 15 minutes; this prevents the GitHub Actions step from timing out while waiting for a blocking response</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>stream=True</code></p>
-</td><td colspan="1" rowspan="1"><p>Yields live events so the workflow log shows progress in real time</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>store=True</code></p>
-</td><td colspan="1" rowspan="1"><p>Persists the interaction so a follow-up call can reference it via <code>previous_interaction_id</code> for multi-turn sessions</p>
-</td></tr>
-</table>
-<p>The named agent ID is the bridge between planes: created once on the control plane, referenced many times on the data plane.</p>
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Write the Resolver Agent" duration="8">
+        <p>The resolver agent needs two files before it can run:</p>
+<ul>
+<li><strong>AGENTS.md</strong> - defines the agent&#39;s identity, role, and hard constraints. Loaded before every interaction.</li>
+<li><strong>SKILL.md</strong> - defines the step-by-step workflow for this class of task. Mounted as a file the agent reads.</li>
+</ul>
 <h2 is-upgraded>Concept: AGENTS.md and SKILL.md</h2>
-<p>Two Markdown files configure what an agent knows and how it behaves. They serve fundamentally different purposes and follow different update paths.</p>
+<p>Think of them like two different documents in an operations team:</p>
 <table>
 <tr><td colspan="1" rowspan="1"></td><td colspan="1" rowspan="1"><p>AGENTS.md</p>
 </td><td colspan="1" rowspan="1"><p>SKILL.md</p>
@@ -501,177 +327,175 @@ for event in stream:
 </td><td colspan="1" rowspan="1"><p>Agent identity, role, and constraints</p>
 </td><td colspan="1" rowspan="1"><p>Step-by-step operational procedure</p>
 </td></tr>
-<tr><td colspan="1" rowspan="1"><p><strong>How it&#39;s passed</strong></p>
-</td><td colspan="1" rowspan="1"><p>Uploaded to GCS, mounted at <code>/.agent/AGENTS.md</code>; also passed as <code>system_instruction</code> at creation</p>
-</td><td colspan="1" rowspan="1"><p>Uploaded to GCS, mounted at <code>/.agent/skills/{name}/</code></p>
+<tr><td colspan="1" rowspan="1"><p><strong>Written by</strong></p>
+</td><td colspan="1" rowspan="1"><p>Security and compliance teams</p>
+</td><td colspan="1" rowspan="1"><p>Operations teams</p>
 </td></tr>
-<tr><td colspan="1" rowspan="1"><p><strong>Always in scope?</strong></p>
-</td><td colspan="1" rowspan="1"><p>Yes - loaded before every interaction</p>
-</td><td colspan="1" rowspan="1"><p>Yes - mounted when agent is created</p>
+<tr><td colspan="1" rowspan="1"><p><strong>Stored where</strong></p>
+</td><td colspan="1" rowspan="1"><p>GCS, mounted at <code>/.agent/AGENTS.md</code></p>
+</td><td colspan="1" rowspan="1"><p>GCS, mounted at <code>/.agent/skills/{name}/</code></p>
 </td></tr>
-<tr><td colspan="1" rowspan="1"><p><strong>Updated by</strong></p>
-</td><td colspan="1" rowspan="1"><p>Upload new GCS file then recreate the agent</p>
-</td><td colspan="1" rowspan="1"><p>Upload new GCS file then recreate the agent</p>
+<tr><td colspan="1" rowspan="1"><p><strong>Also passed as</strong></p>
+</td><td colspan="1" rowspan="1"><p><code>system_instruction</code> at agent creation</p>
+</td><td colspan="1" rowspan="1"><p>(mounted file only)</p>
 </td></tr>
-<tr><td colspan="1" rowspan="1"><p><strong>Enterprise ownership</strong></p>
-</td><td colspan="1" rowspan="1"><p>Security and compliance teams (governance layer)</p>
-</td><td colspan="1" rowspan="1"><p>Operations teams (runbook layer)</p>
-</td></tr>
-</table>
-<aside class="warning"><p><strong>On Vertex AI Agent Platform, you cannot mount two GCS sources under the same top-level directory.</strong> Defining one source at <code>/.agent/AGENTS.md</code> and another at <code>/.agent/skills/fix-issue/</code> will fail with a 400 <code>INVALID_ARGUMENT</code> error. Both files must live in the same GCS folder prefix, mounted as a single source at <code>/.agent</code>. This project uses <code>agent-home/</code> as that prefix:</p>
-<pre><code>gs://{BUCKET}/resolver/agent-home/AGENTS.md              -&gt; /.agent/AGENTS.md
-gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -&gt; /.agent/skills/fix-issue/
-</code></pre>
-<p>The Gemini API does not have this restriction because it supports <code>"type": "inline"</code> sources, where each file is its own entry. On Vertex AI with GCS sources, one prefix, one source entry.</p>
-</aside>
-<aside class="special"><p><strong><code>system_instruction</code></strong><strong> and </strong><strong><code>/.agent/AGENTS.md</code></strong><strong> are additive.</strong> Both apply when present. This project sets both: <code>system_instruction</code> carries the content at agent creation time (stored in the agent definition), and <code>/.agent/AGENTS.md</code> is the same content mounted as a file the harness reads at runtime. You can use <code>system_instruction</code> alone for quick configuration, or both together for the full pattern.</p>
-</aside>
-<p><strong>AGENTS.md - system instruction:</strong></p>
-<p>AGENTS.md defines the agent&#39;s identity: its persona, hard constraints, and non-negotiable rules. It is loaded before every interaction and sets the boundaries the agent operates within regardless of what the task prompt says.</p>
-<p>On the Vertex AI Agent Platform, AGENTS.md reaches the agent via two paths simultaneously:</p>
-<ol type="1">
-<li><strong>As </strong><strong><code>system_instruction</code></strong>: <code>create_agents.py</code> reads the local file and passes its content as the <code>system_instruction</code> string parameter to <code>client.agents.create()</code>. This is stored in the agent definition on the control plane.</li>
-<li><strong>As a mounted file</strong>: <code>upload_skills.sh</code> uploads it to GCS. It is then mounted at <code>/.agent/AGENTS.md</code> inside the sandbox via <code>base_environment.sources</code>. The harness reads this path automatically at runtime.</li>
-</ol>
-<p>Both carry the same content. The parameter is read at agent creation; the file is read at runtime.</p>
-<p><strong>Path conventions:</strong></p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Context</p>
-</td><td colspan="1" rowspan="1"><p>Path</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Local project file</p>
-</td><td colspan="1" rowspan="1"><p><code>target-app/.agents/AGENTS.md</code></p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>GCS object</p>
-</td><td colspan="1" rowspan="1"><p><code>gs://{BUCKET}/resolver/agent-home/AGENTS.md</code></p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Sandbox (Agent Platform)</p>
-</td><td colspan="1" rowspan="1"><p><code>/.agent/AGENTS.md</code></p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Sandbox (Gemini API)</p>
-</td><td colspan="1" rowspan="1"><p><code>.agents/AGENTS.md</code></p>
+<tr><td colspan="1" rowspan="1"><p><strong>Update path</strong></p>
+</td><td colspan="1" rowspan="1"><p>Upload new GCS file, recreate agent</p>
+</td><td colspan="1" rowspan="1"><p>Upload new GCS file, recreate agent</p>
 </td></tr>
 </table>
-<p>The resolver agent&#39;s <code>AGENTS.md</code> (<code>target-app/.agents/AGENTS.md</code>):</p>
-<pre><code language="language-markdown" class="language-markdown">---
-name: issue-resolver
-description: Diagnose and fix bugs in GitHub issues, verify with tests, open a PR.
----
-
-# Issue Resolver Agent
-
-You are an expert software engineer. When given a GitHub issue, your job is to
-understand the reported problem, locate the relevant code, write a targeted fix,
-verify it with the existing test suite, and open a pull request.
-
-## Rules
-- Never create new files to apply a fix. Edit the file that contains the bug.
-- Never fix a symptom when you can fix the root cause.
-- If tests pass before your change, they must all pass after it too.
-- Do not refactor, rename, or clean up anything unrelated to the issue.
-- If you cannot confidently locate the bug, open a PR describing what you found
-  and stop - do not guess.
-</code></pre>
-<p><strong>SKILL.md - playbook:</strong></p>
-<p>SKILL.md defines the workflow procedure the agent follows for a specific task type. It is stored in GCS and mounted read-only at <code>/.agent/skills/{name}/</code> when the agent is created. The agent reads it like documentation when executing a task - a step-by-step runbook it follows.</p>
-<p>Updating a skill means uploading a new file to GCS and recreating the agent. GCS sources are baked into the agent&#39;s base environment snapshot at creation time - the sandbox does not re-fetch from GCS on each interaction.</p>
-<p>The resolver agent&#39;s skill (<code>target-app/.agents/skills/fix-issue/SKILL.md</code>, excerpt):</p>
-<pre><code language="language-markdown" class="language-markdown">---
-name: fix-issue
-description: Clone a repo, diagnose a bug from a GitHub issue, fix it, open a PR.
----
-
-# Skill: Fix GitHub Issue
-
-## Workflow
-
-1. Read the issue using the GitHub MCP server to get the title, body, and number.
-2. Clone the repository and read its structure before opening any files.
-3. Install dependencies and run the existing tests - record which ones fail.
-4. Diagnose the root cause by reading the failing test and the source it tests.
-5. Fix the root cause. Run tests again. Iterate until all tests pass.
-6. Commit, push a branch fix/issue-{number}, and open a PR via GitHub MCP.
-</code></pre>
-<p>This project has two skills:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Skill</p>
-</td><td colspan="1" rowspan="1"><p>Local file</p>
-</td><td colspan="1" rowspan="1"><p>Mount path in sandbox</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>fix-issue</code></p>
-</td><td colspan="1" rowspan="1"><p><code>target-app/.agents/skills/fix-issue/SKILL.md</code></p>
-</td><td colspan="1" rowspan="1"><p><code>/.agent/skills/fix-issue/SKILL.md</code></p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>deploy</code></p>
-</td><td colspan="1" rowspan="1"><p><code>cd-agent/SKILL.md</code></p>
-</td><td colspan="1" rowspan="1"><p><code>/.agent/skills/deploy/SKILL.md</code></p>
-</td></tr>
-</table>
-<p><strong>When to put content in AGENTS.md vs SKILL.md:</strong></p>
 <p>Put in <strong>AGENTS.md</strong> anything that defines what the agent IS and what it MUST NOT do:</p>
 <ul>
 <li>Role and expertise (&#34;You are a senior software engineer&#34;)</li>
 <li>Hard constraints (&#34;Never modify files outside <code>target-app/</code>&#34;)</li>
-<li>Output format requirements (&#34;Always link the PR to the issue&#34;)</li>
+<li>Non-negotiable rules (&#34;If tests pass before your change, they must pass after&#34;)</li>
 </ul>
 <p>Put in <strong>SKILL.md</strong> anything that defines HOW to do a specific task:</p>
 <ul>
 <li>Step-by-step workflow (clone, install, test, fix, push)</li>
 <li>Tool usage notes (&#34;Use the GitHub MCP server for all GitHub API calls&#34;)</li>
-<li>Decision logic for the task (&#34;If tests fail after fix, iterate before opening PR&#34;)</li>
+<li>Decision logic (&#34;If tests fail after fix, iterate before opening PR&#34;)</li>
 </ul>
-<p>In enterprise environments, this separation maps naturally to change management: both files require a GCS upload and agent recreation to take effect, but they are owned by different teams and go through different review gates: AGENTS.md by security and compliance, SKILL.md by operations.</p>
-<h2 is-upgraded>Concept: Hosted MCP servers</h2>
-<p>A naive approach would write custom Python functions to call the GitHub API, Cloud Monitoring API, and Cloud Logging API, then register them as tools. That works, but it means writing auth handling, request formatting, and error handling for every external service.</p>
-<p><strong>Hosted MCP servers</strong> solve this. MCP (Model Context Protocol) is an open standard for exposing APIs as agent-callable tools. Google and GitHub host MCP servers for their APIs - you pass the URL and auth headers at interaction time, and the agent gets a full set of typed tools with no code required.</p>
-<p>This project uses three hosted MCP servers (no deployment required):</p>
+<aside class="warning"><p><strong>On Gemini Enterprise Agent Platform, you cannot mount two GCS sources under the same top-level directory.</strong> Both files must share one GCS prefix, mounted as a single source at <code>/.agent</code>. This project uses <code>agent-home/</code> as that shared prefix:</p>
+<pre><code>gs://{BUCKET}/resolver/agent-home/AGENTS.md              -&gt; /.agent/AGENTS.md
+gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -&gt; /.agent/skills/fix-issue/
+</code></pre>
+</aside>
+<h2 is-upgraded>Open the resolver AGENTS.md</h2>
+<pre><code language="language-bash" class="language-bash">cloudshell edit starter/target-app/.agents/AGENTS.md
+</code></pre>
+<p>You&#39;ll see a <code># TODO</code> comment for the <code>## Rules</code> section. The persona is already filled in.</p>
+<h2 is-upgraded>TODO - Add the Rules section</h2>
+<p>The rules exist to prevent failure modes that are specific to unrestricted code execution. Without them the agent might: create helper files instead of editing the broken one, patch a symptom without fixing the root cause, or open a PR while tests still fail.</p>
+<p>Each rule maps to one real failure mode:</p>
 <table>
-<tr><td colspan="1" rowspan="1"><p>Server</p>
-</td><td colspan="1" rowspan="1"><p>URL</p>
-</td><td colspan="1" rowspan="1"><p>Used by</p>
+<tr><td colspan="1" rowspan="1"><p>Rule</p>
+</td><td colspan="1" rowspan="1"><p>What failure it prevents</p>
 </td></tr>
-<tr><td colspan="1" rowspan="1"><p>GitHub</p>
-</td><td colspan="1" rowspan="1"><p><code>https://api.githubcopilot.com/mcp/</code></p>
-</td><td colspan="1" rowspan="1"><p>Both agents: read issues, open PRs, post comments</p>
+<tr><td colspan="1" rowspan="1"><p>Never create new files to apply a fix</p>
+</td><td colspan="1" rowspan="1"><p>Keeps the PR diff minimal; helper files leave the root cause in place</p>
 </td></tr>
-<tr><td colspan="1" rowspan="1"><p>Cloud Monitoring</p>
-</td><td colspan="1" rowspan="1"><p><code>https://monitoring.googleapis.com/mcp</code></p>
-</td><td colspan="1" rowspan="1"><p>CD agent: query <code>run.googleapis.com/request_count</code></p>
+<tr><td colspan="1" rowspan="1"><p>Never fix a symptom, fix the root cause</p>
+</td><td colspan="1" rowspan="1"><p>Prevents editing test assertions to match wrong behavior</p>
 </td></tr>
-<tr><td colspan="1" rowspan="1"><p>Cloud Logging</p>
-</td><td colspan="1" rowspan="1"><p><code>https://logging.googleapis.com/mcp</code></p>
-</td><td colspan="1" rowspan="1"><p>CD agent: fetch error logs on rollback</p>
+<tr><td colspan="1" rowspan="1"><p>Tests must all pass before opening a PR</p>
+</td><td colspan="1" rowspan="1"><p>Hard quality gate - the agent iterates, not you</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Do not refactor anything unrelated to the issue</p>
+</td><td colspan="1" rowspan="1"><p>One PR, one fix - clean and reviewable history</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>If you cannot locate the bug, describe what you found and stop</p>
+</td><td colspan="1" rowspan="1"><p>Fail-safe against silent partial fixes</p>
 </td></tr>
 </table>
-<p>MCP servers are passed at interaction time via the <code>tools</code> parameter:</p>
-<pre><code language="language-python" class="language-python">stream = client.interactions.create(
-    agent=AGENT_ID,
-    input=prompt,
-    tools=[
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
-            &#34;headers&#34;: {
-                &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
-                &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,   # avoids name conflict
-            },
-        },
-    ],
-    stream=True,
-    background=True,
-    store=True,
-)
+<p>Replace the <code># TODO</code> comment with:</p>
+<pre><code language="language-markdown" class="language-markdown">## Rules
+
+- Never create new files to apply a fix. Edit the file that contains the bug.
+- Never fix a symptom when you can fix the root cause.
+- If tests pass before your change, they must all pass after it too.
+- Do not add comments unless the fix is genuinely non-obvious.
+- Do not refactor, rename, or clean up anything unrelated to the issue.
+- If you cannot confidently locate the bug after exploring the codebase, open a PR describing what you found and stop - do not guess.
 </code></pre>
-<aside class="special"><p><strong>Why </strong><strong><code>X-MCP-Exclude-Tools: delete_file</code></strong><strong>?</strong> The GitHub MCP server exposes a <code>delete_file</code> tool. The Managed Agents sandbox also provides a built-in <code>delete_file</code> tool for the local filesystem. Having two tools with the same name causes a conflict that crashes the interaction. Excluding the GitHub MCP&#39;s <code>delete_file</code> avoids this.</p>
-</aside>
+<p>Compare your file with <code>target-app/.agents/AGENTS.md</code> when done.</p>
+<h2 is-upgraded>Open the resolver SKILL.md</h2>
+<pre><code language="language-bash" class="language-bash">cloudshell edit &#34;starter/target-app/.agents/skills/fix-issue/SKILL.md&#34;
+</code></pre>
+<p>You&#39;ll see two <code># TODO</code> comment blocks: one for <code>## Workflow</code> and one for <code>## Critical rules</code>. The trigger and tools sections at the top are already filled in.</p>
+<h2 is-upgraded>TODO - Add the Workflow and Critical Rules</h2>
+<p>The workflow gives the agent a step-by-step runbook for this class of task. Steps 1-3 are orientation before action: the agent must understand the codebase before it touches anything. Step 4 establishes a failure baseline so the agent verifies its fix addresses exactly the right behavior. Step 8 includes the <code>git config</code> lines that are critical: the managed sandbox starts with no git identity configured, and <code>git commit</code> fails without them.</p>
+<p>Replace the <code>## Workflow</code> comment block with:</p>
+<pre><code language="language-markdown" class="language-markdown">## Workflow
+
+1. Read the issue using the GitHub MCP server to get the title, body, and number.
+
+2. Clone the repository and read its structure:
+   ```bash
+   git clone &lt;auth_repo_url&gt; /workspace/repo
+   cd /workspace/repo &amp;&amp; ls -la
+</code></pre>
+<ol type="1" start="3">
+<li>Install dependencies (check for <code>requirements.txt</code>, <code>package.json</code>, <code>pyproject.toml</code>).</li>
+<li>Run the existing tests to see the current failure baseline.</li>
+<li>Diagnose the issue using the symptom-to-location playbook.</li>
+<li>Write the fix. Change only the code that causes the reported behavior.</li>
+<li>Run the tests again. If any fail, iterate. Do not open a PR until all pass.</li>
+<li>Commit and push:<pre><code language="language-bash" class="language-bash">git config user.email &#34;agent@managed-agents.dev&#34;
+git config user.name &#34;Issue Resolver Agent&#34;
+git checkout -b fix/issue-&lt;ISSUE_NUMBER&gt;
+git add -A
+git commit -m &#34;fix: &lt;description&gt; (closes #&lt;ISSUE_NUMBER&gt;)&#34;
+git push origin fix/issue-&lt;ISSUE_NUMBER&gt;
+</code></pre>
+</li>
+<li>Open a PR via GitHub MCP. Post a comment on the issue with the PR URL.</li>
+</ol>
+<pre><code>Replace the `## Critical rules` comment block with:
+
+```markdown
+## Critical rules
+
+- **MANDATORY: run the full test suite before opening a PR.**
+- **Do NOT create new files to apply a fix.**
+- **Do NOT open a PR if any tests fail.** Iterate until they pass.
+</code></pre>
+<p>Compare your file with <code>target-app/.agents/skills/fix-issue/SKILL.md</code> when done.</p>
 
 
       </google-codelab-step>
     
       <google-codelab-step label="Create Named Agents" duration="8">
-        <p>In this step you&#39;ll create a GCS bucket, upload AGENTS.md and SKILL.md for both agents, register the two named agents on Gemini Enterprise Agent Platform, and verify they initialize correctly before triggering any workflow.</p>
+        <p>You have the agent files. Now you&#39;ll upload them to GCS and register the two named agents on Gemini Enterprise Agent Platform.</p>
+<h2 is-upgraded>Concept: The Antigravity harness</h2>
+<p>Every managed agent runs on the <strong>Antigravity harness</strong> - the execution engine that powers Gemini Enterprise Agent Platform. The <code>base_agent</code> field in <code>client.agents.create()</code> pins the harness version:</p>
+<pre><code language="language-python" class="language-python">client.agents.create(
+    id=&#34;managed-issue-resolver&#34;,
+    base_agent=&#34;antigravity-preview-05-2026&#34;,   # pins the harness version
+    ...
+)
+</code></pre>
+<p>The harness ships a full Ubuntu environment pre-installed with everything the agent needs:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Software</p>
+</td><td colspan="1" rowspan="1"><p>Version</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Python</p>
+</td><td colspan="1" rowspan="1"><p>3.11</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Node.js</p>
+</td><td colspan="1" rowspan="1"><p>20</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>gcloud CLI</p>
+</td><td colspan="1" rowspan="1"><p>Latest</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>git, curl, jq, pytest, pip</p>
+</td><td colspan="1" rowspan="1"><p>Latest</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>ripgrep, fd, tree</p>
+</td><td colspan="1" rowspan="1"><p>Latest</p>
+</td></tr>
+</table>
+<p>Built-in tools are activated at agent creation and cannot be changed without recreating the agent:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Tool type</p>
+</td><td colspan="1" rowspan="1"><p>What the agent gains</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>code_execution</code></p>
+</td><td colspan="1" rowspan="1"><p>Run bash and Python with stdout/stderr capture</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>google_search</code></p>
+</td><td colspan="1" rowspan="1"><p>Web search from inside the sandbox</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>url_context</code></p>
+</td><td colspan="1" rowspan="1"><p>Fetch and read web pages</p>
+</td></tr>
+</table>
+<p><strong>Network access is disabled by default.</strong> Our project uses <code>{"domain": "*"}</code> to permit all outbound connections (required for <code>git clone</code>, <code>git push</code>, and MCP calls). In production, replace <code>*</code> with specific domains to enforce a tight egress policy.</p>
+<aside class="special"><p><strong>Why pin the harness version?</strong> Using <code>base_agent="antigravity-preview-05-2026"</code> pins your agents to a specific harness version. Your agents always run on the same execution environment unless you explicitly recreate them with a newer <code>base_agent</code>. This makes upgrades explicit and predictable.</p>
+</aside>
 <h2 is-upgraded>Upload agent files to GCS</h2>
-<p>Both AGENTS.md and SKILL.md files are stored in GCS and mounted into the agent sandbox at <code>/.agent/</code>. Create the bucket and upload all files:</p>
+<p>Both AGENTS.md and SKILL.md files are stored in GCS and mounted into the sandbox at <code>/.agent/</code>. Create the bucket and upload all files:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
 GCS_SKILLS_BUCKET=$(grep GCS_SKILLS_BUCKET .env | cut -d= -f2)
 
@@ -682,7 +506,7 @@ gcloud storage buckets create gs://$GCS_SKILLS_BUCKET \
 <p>Add the bucket name as a GitHub secret:</p>
 <pre><code language="language-bash" class="language-bash">gh secret set GCS_SKILLS_BUCKET --body &#34;$GCS_SKILLS_BUCKET&#34;
 </code></pre>
-<p>Upload both AGENTS.md and SKILL.md files:</p>
+<p>Upload all AGENTS.md and SKILL.md files:</p>
 <pre><code language="language-bash" class="language-bash">bash setup/upload_skills.sh
 </code></pre>
 <p>Expected output:</p>
@@ -697,19 +521,59 @@ gs://managed-issue-resolver-skills-my-project/resolver/agent-home/AGENTS.md
 gs://managed-issue-resolver-skills-my-project/resolver/agent-home/skills/fix-issue/SKILL.md
 
 Note: recreate agents after changing SKILL.md or AGENTS.md files:
-  uv run python setup/create_agents.py
+  uv run python starter/setup/create_agents.py
 </code></pre>
-<aside class="special"><p><strong>Re-run </strong><strong><code>upload_skills.sh</code></strong><strong> whenever you edit AGENTS.md or SKILL.md.</strong> Both files are read from GCS at agent creation time. Local edits have no effect until you upload. After uploading, recreate the agents to pick up the latest content.</p>
+<aside class="special"><p><strong>Re-run </strong><strong><code>upload_skills.sh</code></strong><strong> whenever you edit AGENTS.md or SKILL.md.</strong> Both files are baked into the agent&#39;s base environment snapshot at creation time - the sandbox does not re-fetch from GCS on each interaction. Upload first, then recreate the agents to pick up the latest content.</p>
 </aside>
+<h2 is-upgraded>Open create_agents.py</h2>
+<pre><code language="language-bash" class="language-bash">cloudshell edit starter/setup/create_agents.py
+</code></pre>
+<p>The client initialization, file reads, function signature, and polling loop are pre-filled. You&#39;ll see three <code># TODO</code> comments inside the <code>client.agents.create()</code> call. Work through them in order.</p>
+<h2 is-upgraded>TODO 1 - Pass <code>system_instruction</code></h2>
+<p>The <code>system_instruction</code> variable is already read from the AGENTS.md file at the top of the file. Pass it directly to the API:</p>
+<pre><code language="language-python" class="language-python">system_instruction=system_instruction,
+</code></pre>
+<p>This is stored in the agent definition on the control plane and applied before every interaction. It is the same content that <code>upload_skills.sh</code> uploads to GCS at <code>/.agent/AGENTS.md</code> - both paths carry the same text. The parameter is stored at agent creation; the GCS file is read at runtime by the harness.</p>
+<h2 is-upgraded>TODO 2 - Add the <code>tools</code> list</h2>
+<p>Built-in tool capabilities are activated at agent creation time and cannot be added later without recreating the agent:</p>
+<pre><code language="language-python" class="language-python">tools=[
+    {&#34;type&#34;: &#34;code_execution&#34;},
+    {&#34;type&#34;: &#34;google_search&#34;},
+    {&#34;type&#34;: &#34;url_context&#34;},
+],
+</code></pre>
+<p><strong><code>code_execution</code></strong> gives the agent a full bash and Python environment - <code>git</code>, <code>pytest</code>, <code>pip</code>, and all standard Unix tools. Without this, the agent can only produce text; it cannot run any commands.</p>
+<p><strong><code>google_search</code></strong> allows the agent to search the web. The resolver does not use it for the fix workflow, but it is available if the agent needs to look up an error message it encounters.</p>
+<p><strong><code>url_context</code></strong> lets the agent fetch and read the content at a URL. Useful if the issue body contains a link to a relevant doc or stack trace.</p>
+<h2 is-upgraded>TODO 3 - Add <code>base_environment</code></h2>
+<p>The base environment defines the sandbox and what files are pre-loaded when it starts:</p>
+<pre><code language="language-python" class="language-python">base_environment={
+    &#34;type&#34;: &#34;remote&#34;,
+    &#34;sources&#34;: [
+        {
+            &#34;type&#34;: &#34;gcs&#34;,
+            &#34;source&#34;: f&#34;gs://{GCS_SKILLS_BUCKET}/{agent_home_gcs_prefix}&#34;,
+            &#34;target&#34;: &#34;/.agent&#34;,
+        }
+    ],
+    &#34;network&#34;: {&#34;allowlist&#34;: [{&#34;domain&#34;: &#34;*&#34;}]},
+},
+</code></pre>
+<p><strong><code>"type": "remote"</code></strong> - a managed hosted sandbox provisioned by the platform. The agent does not run locally.</p>
+<p><strong><code>"source": f"gs://.../{agent_home_gcs_prefix}"</code></strong> - the GCS prefix is mounted as a directory, not a single file. Everything under <code>resolver/agent-home/</code> lands at <code>/.agent/</code> in the sandbox: <code>AGENTS.md</code> at <code>/.agent/AGENTS.md</code> and the skill at <code>/.agent/skills/fix-issue/SKILL.md</code>. This is why both files must share one GCS prefix - the API rejects two sources that would share the same top-level target directory.</p>
+<p><strong><code>"target": "/.agent"</code></strong> - the Antigravity harness auto-discovers <code>/.agent/AGENTS.md</code> as the runtime system instruction and loads skill files from <code>/.agent/skills/</code>.</p>
+<p><strong><code>"network": {"allowlist": [{"domain": "*"}]}</code></strong> - network access is disabled by default. The <code>*</code> allowlist enables all outbound connections - required for <code>git clone</code>, <code>git push</code>, and the GitHub MCP server.</p>
+<p>Compare your completed file with <code>setup/create_agents.py</code> - they should be identical.</p>
 <h2 is-upgraded>Register agents</h2>
-<p>Run <code>create_agents.py</code> once to register both named agents on Gemini Enterprise Agent Platform:</p>
-<pre><code language="language-bash" class="language-bash">uv run python setup/create_agents.py
+<p>Run your completed starter file to register both named agents on Gemini Enterprise Agent Platform:</p>
+<pre><code language="language-bash" class="language-bash">uv run python starter/setup/create_agents.py
 </code></pre>
 <p>The script prints the <code>gh secret set</code> commands for both agent IDs. Run them:</p>
 <pre><code language="language-bash" class="language-bash">gh secret set RESOLVER_AGENT_ID --body &#34;managed-issue-resolver&#34;
 gh secret set CD_AGENT_ID --body &#34;managed-issue-cd&#34;
 </code></pre>
-<p>Verify the agents initialize correctly before triggering the workflow:</p>
+<h2 is-upgraded>Verify the agents</h2>
+<p>Run the smoke test before triggering any workflow:</p>
 <pre><code language="language-bash" class="language-bash">uv run python setup/test_agents.py
 </code></pre>
 <p>Expected output:</p>
@@ -719,66 +583,23 @@ gh secret set CD_AGENT_ID --body &#34;managed-issue-cd&#34;
   PASS: agent initialized and completed successfully
 
 Testing: managed-issue-cd
-  Prompt: Say hello and confirm you can access the GitHub, Cloud Monitoring, and Cloud Loggi
+  Prompt: Say hello and confirm you can access the GitHub, Cloud Monitoring, and Cloud Logging MCP servers.
   interaction.created
   PASS: agent initialized and completed successfully
 
 ========================================
 All agents OK. Ready to trigger the workflow.
 </code></pre>
-<aside class="special"><p><strong>Agent IDs are permanent.</strong> Once created, the agent ID never changes. Re-run <code>upload_skills.sh</code> and then <code>create_agents.py</code> only if you change AGENTS.md or SKILL.md files, or delete the agents. The GitHub secrets never need updating once set.</p>
+<aside class="special"><p><strong>Agent IDs are permanent.</strong> Once created, the agent ID never changes. Re-run <code>upload_skills.sh</code> then recreate the agents only if you change AGENTS.md or SKILL.md files, or delete the agents. The GitHub secrets never need updating once set.</p>
 </aside>
-<aside class="warning"><p><strong>If you see </strong><strong><code>GOOGLE_CLOUD_PROJECT: KeyError</code></strong>, your <code>.env</code> file is not filled in or not being loaded. Check that <code>GOOGLE_CLOUD_PROJECT=your-project-id</code> is set correctly in <code>.env</code> and that you ran the command from the repo root.</p>
+<aside class="warning"><p><strong>If you see </strong><strong><code>GOOGLE_CLOUD_PROJECT: KeyError</code></strong>, your <code>.env</code> file is not filled in or not being loaded. Check that <code>GOOGLE_CLOUD_PROJECT=your-project-id</code> is set in <code>.env</code> and that you ran the command from the repo root.</p>
 </aside>
-<h2 is-upgraded>Inspect the control plane code</h2>
-<p>Before moving on, read the file that just ran:</p>
-<pre><code language="language-bash" class="language-bash">cat setup/create_agents.py
-</code></pre>
-<p>Notice how it maps to the concepts from the architecture step:</p>
-<pre><code language="language-python" class="language-python"># 1. Initialize the client - Vertex AI endpoint, global region (required for Managed Agents)
-client = genai.Client(vertexai=True, project=PROJECT_ID, location=&#34;global&#34;)
-
-# 2. Read AGENTS.md from disk - this becomes the system_instruction
-RESOLVER_AGENTS_MD = Path(&#34;target-app/.agents/AGENTS.md&#34;).read_text()
-
-# 3. Call the Agents API control plane - this is the one-time setup call
-client.agents.create(
-    id=&#34;managed-issue-resolver&#34;,
-    base_agent=&#34;antigravity-preview-05-2026&#34;,        # pins the Antigravity harness version
-    system_instruction=RESOLVER_AGENTS_MD,           # AGENTS.md content: identity + constraints
-    tools=[
-        {&#34;type&#34;: &#34;code_execution&#34;},                  # enables bash and Python execution
-        {&#34;type&#34;: &#34;google_search&#34;},
-        {&#34;type&#34;: &#34;url_context&#34;},
-    ],
-    base_environment={
-        &#34;type&#34;: &#34;remote&#34;,
-        &#34;sources&#34;: [
-            {
-                &#34;type&#34;: &#34;gcs&#34;,
-                # agent-home/ contains both AGENTS.md and skills/ subdirectory.
-                # One source is required: the API rejects multiple sources that
-                # share the same top-level target directory (/.agent).
-                &#34;source&#34;: f&#34;gs://{GCS_SKILLS_BUCKET}/resolver/agent-home&#34;,
-                &#34;target&#34;: &#34;/.agent&#34;,   # AGENTS.md -&gt; /.agent/AGENTS.md
-                                       # skills/    -&gt; /.agent/skills/
-            }
-        ],
-        &#34;network&#34;: {&#34;allowlist&#34;: [{&#34;domain&#34;: &#34;*&#34;}]},   # network off by default; * allows all
-    },
-)
-</code></pre>
-<p>Also read the AGENTS.md and SKILL.md files to see their actual content:</p>
-<pre><code language="language-bash" class="language-bash">cat target-app/.agents/AGENTS.md
-cat target-app/.agents/skills/fix-issue/SKILL.md
-</code></pre>
-<p>Observe: AGENTS.md defines constraints (&#34;never modify files outside target-app/&#34;). SKILL.md defines procedure (&#34;1. Read the issue. 2. Clone the repo. 3. Run pytest.&#34;). These are separate files that can be updated independently and by different teams.</p>
 
 
       </google-codelab-step>
     
       <google-codelab-step label="Deploy the Target App" duration="5">
-        <p>The target app is a conference session browser with four seeded bugs. You&#39;ll deploy the broken version to Cloud Run now so the CD agent has a live service to update when the resolver agent&#39;s fix is merged.</p>
+        <p>The target app is a conference session browser with four seeded bugs. Deploy the broken version to Cloud Run now so the CD agent has a live service to update when the resolver agent&#39;s fix is merged.</p>
 <p>Create an Artifact Registry repository to store the Docker images that Cloud Build will produce:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
 
@@ -804,10 +625,124 @@ gcloud artifacts repositories create managed-issue-resolver \
 
       </google-codelab-step>
     
+      <google-codelab-step label="Invoke the Resolver Agent" duration="8">
+        <p>The resolver workflow fires when a GitHub issue gets the <code>ai-resolve</code> label. The workflow calls <code>resolve.py</code>, which invokes the resolver agent via the Interactions API. Let&#39;s write that script.</p>
+<h2 is-upgraded>Concept: The Interactions API</h2>
+<p>The Interactions API is the data plane: it invokes a named agent for a specific task. Three parameters make it suitable for long-running agent tasks:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Parameter</p>
+</td><td colspan="1" rowspan="1"><p>Why this project uses it</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>background=True</code></p>
+</td><td colspan="1" rowspan="1"><p>Agent tasks run up to 15 minutes; this prevents the GitHub Actions step from timing out while waiting</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>stream=True</code></p>
+</td><td colspan="1" rowspan="1"><p>Yields live events (text chunks, tool calls, tool results) so the workflow log shows progress in real time</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>store=True</code></p>
+</td><td colspan="1" rowspan="1"><p>Persists the interaction so a follow-up call can resume it via <code>previous_interaction_id</code> for multi-turn sessions</p>
+</td></tr>
+</table>
+<p>The prompt carries only what changes per invocation. Everything the agent needs to know about HOW to do the work is already in SKILL.md, mounted in the sandbox. You author the playbook once, not embed it in every call.</p>
+<h2 is-upgraded>Concept: Hosted MCP servers</h2>
+<p><strong>Hosted MCP servers</strong> expose APIs as agent-callable tools. Google and GitHub host MCP servers for their APIs</p>
+<ul>
+<li>you pass the URL and auth headers at interaction time, and the agent gets a full set of typed tools.</li>
+</ul>
+<p>This project uses three hosted MCP servers:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Server</p>
+</td><td colspan="1" rowspan="1"><p>URL</p>
+</td><td colspan="1" rowspan="1"><p>Used by</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>GitHub</p>
+</td><td colspan="1" rowspan="1"><p><code>https://api.githubcopilot.com/mcp/</code></p>
+</td><td colspan="1" rowspan="1"><p>Both agents: read issues, open PRs, post comments</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Cloud Monitoring</p>
+</td><td colspan="1" rowspan="1"><p><code>https://monitoring.googleapis.com/mcp</code></p>
+</td><td colspan="1" rowspan="1"><p>CD agent: query error rates during canary window</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Cloud Logging</p>
+</td><td colspan="1" rowspan="1"><p><code>https://logging.googleapis.com/mcp</code></p>
+</td><td colspan="1" rowspan="1"><p>CD agent: fetch error logs on rollback</p>
+</td></tr>
+</table>
+<p>MCP servers are passed at interaction time via the <code>tools</code> parameter because auth tokens change per run:</p>
+<pre><code language="language-python" class="language-python">stream = client.interactions.create(
+    agent=AGENT_ID,
+    input=prompt,
+    tools=[
+        {
+            &#34;type&#34;: &#34;mcp_server&#34;,
+            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
+            &#34;headers&#34;: {
+                &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
+                &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,
+            },
+        },
+    ],
+    ...
+)
+</code></pre>
+<aside class="special"><p><strong>Why </strong><strong><code>X-MCP-Exclude-Tools: delete_file</code></strong><strong>?</strong> The GitHub MCP server exposes a <code>delete_file</code> tool. The Managed Agents sandbox also provides a built-in <code>delete_file</code> tool for the local filesystem. Having two tools with the same name causes a conflict that crashes the interaction. Excluding the GitHub MCP version resolves the conflict.</p>
+</aside>
+<h2 is-upgraded>Open resolve.py</h2>
+<pre><code language="language-bash" class="language-bash">cloudshell edit starter/resolver/resolve.py
+</code></pre>
+<p>The imports, environment variable reads, and client initialization are pre-filled. You&#39;ll see two <code># TODO</code> comments inside the <code>resolve()</code> function. Work through them in order.</p>
+<h2 is-upgraded>TODO 1 - Build the prompt</h2>
+<p>The agent needs two pieces of information to start: the issue URL (to read it via GitHub MCP) and an authenticated clone URL (to <code>git clone</code> and <code>git push</code> without an interactive auth prompt).</p>
+<p>Find the <code># TODO 1</code> comment and replace it with:</p>
+<pre><code language="language-python" class="language-python">auth_repo_url = REPO_URL.replace(&#34;https://&#34;, f&#34;https://x-access-token:{GH_TOKEN}@&#34;)
+
+prompt = (
+    f&#34;Resolve this GitHub issue: {issue_url}\n&#34;
+    f&#34;Repository clone URL (authenticated): {auth_repo_url}\n\n&#34;
+    f&#34;Use the GitHub MCP server to read the issue and open the PR. &#34;
+    f&#34;Use the authenticated clone URL for git clone and git push.&#34;
+)
+</code></pre>
+<p><strong><code>x-access-token:{GH_TOKEN}@</code></strong> is Git&#39;s URL-embedded credential format. Placing the token in the URL means <code>git clone</code> and <code>git push</code> authenticate silently. <code>x-access-token</code> is the literal username GitHub expects when using a <code>GITHUB_TOKEN</code> in a URL.</p>
+<p><strong>The prompt is minimal by design.</strong> It only carries what changes between runs. Everything about HOW to do the work (orientation, test, fix, commit sequence) is already in SKILL.md, mounted at <code>/.agent/skills/fix-issue/SKILL.md</code> in the sandbox.</p>
+<h2 is-upgraded>TODO 2 - Call the Interactions API</h2>
+<p>Find the <code># TODO 2</code> comment and replace it with:</p>
+<pre><code language="language-python" class="language-python">stream = client.interactions.create(
+    agent=RESOLVER_AGENT_ID,
+    input=prompt,
+    tools=[
+        {
+            &#34;type&#34;: &#34;mcp_server&#34;,
+            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
+            &#34;name&#34;: &#34;github&#34;,
+            &#34;headers&#34;: {
+                &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
+                &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,
+            },
+        },
+    ],
+    stream=True,
+    background=True,
+    store=True,
+)
+
+for event in stream:
+    print(str(event)[:300], flush=True)
+
+print(&#34;Agent completed.&#34;, flush=True)
+</code></pre>
+<p><strong><code>agent=RESOLVER_AGENT_ID</code></strong> - the named agent ID. All agent config (system instruction, SKILL.md files, built-in tools) is loaded from the agent definition on the platform; you do not re-pass any of it here.</p>
+<p><strong><code>stream=True</code></strong> yields server-sent events as the agent works. Iterating and printing to stdout sends live agent progress to the GitHub Actions log.</p>
+<p><strong><code>background=True</code></strong> makes the <code>create()</code> call return as soon as the agent starts, not when it finishes. Without this, the SDK blocks for 3-5 minutes while the agent runs and GitHub Actions would hit the step timeout.</p>
+<p><strong><code>store=True</code></strong> persists the interaction so a follow-up call can resume it via <code>previous_interaction_id</code> for multi-turn sessions or retries.</p>
+<p>Compare your completed file with <code>resolver/resolve.py</code> when done.</p>
+
+
+      </google-codelab-step>
+    
       <google-codelab-step label="Trigger Issue Resolution" duration="10">
-        <p>The resolver workflow fires when a GitHub issue gets the <code>ai-resolve</code> label. You&#39;ll create the label, open an issue describing the bug, watch the agent fix it, then review and merge the PR it opens.</p>
+        <p>The resolver workflow fires when a GitHub issue receives the <code>ai-resolve</code> label. Let&#39;s trigger it and watch the agent work.</p>
 <h2 is-upgraded>Create the <code>ai-resolve</code> label</h2>
-<p>The GitHub Actions <code>resolve.yml</code> workflow fires when an issue is labeled <code>ai-resolve</code>:</p>
 <pre><code language="language-bash" class="language-bash">gh label create ai-resolve --color &#34;0075ca&#34; --description &#34;Trigger AI issue resolution&#34;
 </code></pre>
 <h2 is-upgraded>Open an issue</h2>
@@ -821,78 +756,6 @@ Bug is in \`target-app/utils.py\`.&#34; \
   --label &#34;ai-resolve&#34;
 </code></pre>
 <p>The <code>ai-resolve</code> label triggers the workflow immediately.</p>
-<h2 is-upgraded>Inspect the resolver agent configuration</h2>
-<p>Before watching the run, understand what the agent knows and how it was designed.</p>
-<p><strong>AGENTS.md sets the constraints</strong> (<code>target-app/.agents/AGENTS.md</code>):</p>
-<p>The rules are precise because the agent has unrestricted code execution. Without them it would find plausible-but-wrong fixes: creating new helper functions instead of editing the broken one, patching symptoms rather than causes, or refactoring unrelated code and inflating the diff.</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Rule</p>
-</td><td colspan="1" rowspan="1"><p>What failure it prevents</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Never create new files to apply a fix</p>
-</td><td colspan="1" rowspan="1"><p>Keeps the PR diff minimal and reviewable</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Never fix a symptom when you can fix the root cause</p>
-</td><td colspan="1" rowspan="1"><p>No band-aid patches that pass tests but leave bugs in production</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Tests must all pass before opening a PR</p>
-</td><td colspan="1" rowspan="1"><p>Hard quality gate - the agent iterates, not you</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Do not refactor anything unrelated to the issue</p>
-</td><td colspan="1" rowspan="1"><p>One PR, one fix - clean history</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>If you cannot locate the bug, describe what you found and stop</p>
-</td><td colspan="1" rowspan="1"><p>Fail-safe against silent partial fixes</p>
-</td></tr>
-</table>
-<p><strong>SKILL.md defines the workflow</strong> (<code>target-app/.agents/skills/fix-issue/SKILL.md</code>):</p>
-<p>Where AGENTS.md sets boundaries, SKILL.md gives the agent a step-by-step runbook mounted at <code>/.agent/skills/fix-issue/</code>. The agent reads it as documentation for this class of task:</p>
-<ol type="1">
-<li>Read the issue via GitHub MCP (understand the reported behavior)</li>
-<li>Clone and read the repo structure before opening any files (orientation before action)</li>
-<li>Install dependencies and run all tests (record the failure baseline)</li>
-<li>Diagnose from the failing tests (evidence-based, not guess-based)</li>
-<li>Fix the root cause - run tests again, iterate until all pass</li>
-<li>Commit, push a branch, open a PR via GitHub MCP</li>
-</ol>
-<p>AGENTS.md and SKILL.md are complementary: AGENTS.md says what the agent MUST NOT do; SKILL.md says what it MUST do, and in what order. The agent cannot deviate from either.</p>
-<h2 is-upgraded>Inspect the data plane call</h2>
-<pre><code language="language-bash" class="language-bash">cat resolver/resolve.py
-</code></pre>
-<pre><code language="language-python" class="language-python">auth_repo_url = REPO_URL.replace(&#34;https://&#34;, f&#34;https://x-access-token:{GH_TOKEN}@&#34;)
-
-prompt = (
-    f&#34;Resolve this GitHub issue: {issue_url}\n&#34;
-    f&#34;Repository clone URL (authenticated): {auth_repo_url}\n\n&#34;
-    f&#34;Use the GitHub MCP server to read the issue and open the PR. &#34;
-    f&#34;Use the authenticated clone URL for git clone and git push.&#34;
-)
-
-stream = client.interactions.create(
-    agent=RESOLVER_AGENT_ID,  # named agent carries all config: AGENTS.md, SKILL.md, tools
-    input=prompt,             # only the issue URL and auth clone URL change per run
-    tools=[
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
-            &#34;name&#34;: &#34;github&#34;,
-            &#34;headers&#34;: {
-                &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,  # per-run token, not in agent definition
-                &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,   # removes name conflict with sandbox tool
-            },
-        },
-    ],
-    stream=True,     # yields live events to the GitHub Actions log
-    background=True, # returns immediately - agent runs for minutes, Actions step would timeout
-    store=True,      # persists interaction so a follow-up call can resume it
-)
-</code></pre>
-<p>Three design decisions worth noting:</p>
-<p><strong>Why GitHub MCP is at interaction time, not in the agent definition:</strong> The token comes from the GitHub Actions runner and is different for every repository and every run. It cannot be baked into the named agent at creation time.</p>
-<p><strong>Why </strong></p>
-<p><strong><code>background=True</code></strong></p>
-<p><strong>:</strong> The agent takes 3-5 minutes to clone, test, fix, and push. Without <code>background=True</code>, the SDK call blocks until the agent finishes, and a blocked GitHub Actions step eventually hits its timeout. With <code>background=True</code>, the call returns immediately and events are polled from the stream while the agent works asynchronously.</p>
-<p><strong>Why the prompt is so short:</strong> The prompt only carries what changes per invocation: the issue URL and the authenticated clone URL. Everything the agent needs to know about HOW to do the work is already in SKILL.md, mounted in the sandbox. The named agent design means you author the playbook once, not embed it in every API call.</p>
 <h2 is-upgraded>Watch the agent work</h2>
 <pre><code language="language-bash" class="language-bash">gh run watch
 </code></pre>
@@ -906,17 +769,17 @@ stream = client.interactions.create(
 </code></pre>
 <p>The &#34;Comment on issue&#34; step posts a message to the issue: &#34;Agent is working on this. A PR will appear here when the fix is ready.&#34;</p>
 <h2 is-upgraded>What the agent does</h2>
-<p>While the workflow is running, the Managed Agent is executing inside a hosted sandbox:</p>
+<p>While the workflow is running, the resolver agent is executing inside a hosted sandbox, following the SKILL.md playbook you wrote:</p>
 <ol type="1">
 <li><strong>Reads the issue</strong> via GitHub MCP (gets the title, body, and issue number)</li>
-<li><strong>Clones the repo</strong> using the authenticated URL injected via the prompt</li>
+<li><strong>Clones the repo</strong> using the authenticated URL from the prompt</li>
 <li><strong>Installs dependencies</strong> from <code>requirements.txt</code></li>
-<li><strong>Runs pytest</strong> (records which tests fail: all 4 filter tests)</li>
+<li><strong>Runs pytest</strong> (records which tests fail - all 4 filter tests)</li>
 <li><strong>Reads </strong><strong><code>utils.py</code></strong> and finds the root causes: <ul>
 <li><code>filter_by_track</code> normalizes <code>"AI & ML"</code> to <code>"ai-and-ml"</code> but sessions store <code>"AI & ML"</code></li>
 <li><code>filter_by_day</code> compares string <code>"1"</code> to integer <code>1</code> (never equal)</li>
 <li><code>search_by_speaker</code> uses case-sensitive <code>in</code> operator</li>
-<li><code>session_count</code> counts from the full list instead of the filtered one</li>
+<li><code>session_count</code> counts from the full list instead of the filtered subset</li>
 </ul>
 </li>
 <li><strong>Writes the fix</strong>: targeted edits to <code>utils.py</code></li>
@@ -925,10 +788,265 @@ stream = client.interactions.create(
 </ol>
 <aside class="special"><p><strong>The agent never calls your code directly.</strong> It runs <code>pytest</code> inside the sandbox the same way a developer would on their laptop. If the tests fail after the fix, the agent iterates: it does not open a PR until all tests pass.</p>
 </aside>
-<aside class="warning"><p><strong>Run takes 3-5 minutes.</strong> The agent reasons step by step, so it is slower than running pytest yourself. This is expected. If the run exceeds 15 minutes, the sandbox auto-snapshots and the interaction ends (this rarely happens for a single-file fix).</p>
+<aside class="warning"><p><strong>Run takes 3-5 minutes.</strong> The agent reasons step by step. If the run exceeds 15 minutes, the sandbox auto-snapshots and the interaction ends (this rarely happens for a single-file fix).</p>
 </aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Write the CD Agent" duration="8">
+        <p>The CD agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates for 5 minutes, then promotes or rolls back automatically. Like the resolver, it needs an AGENTS.md and a SKILL.md.</p>
+<h2 is-upgraded>Concept: The CD AGENTS.md rules</h2>
+<p>The CD agent has code execution and network access. Without explicit rules it would make unsafe deployment decisions:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Rule</p>
+</td><td colspan="1" rowspan="1"><p>What failure it prevents</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Always record the stable revision before deploying</p>
+</td><td colspan="1" rowspan="1"><p>Rollback is impossible without it - Cloud Run has no &#34;undo&#34; for traffic splits</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Never use <code>gcloud logging read</code> for health decisions</p>
+</td><td colspan="1" rowspan="1"><p>Log ingestion has 30-90 second delay and no denominator - logs cannot compute error rate</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Never close the issue on rollback</p>
+</td><td colspan="1" rowspan="1"><p>The fix did not reach production - closing signals false success to the team</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>If no linked issue found in PR, skip GitHub steps</p>
+</td><td colspan="1" rowspan="1"><p>Not every PR has an issue reference; the agent should still complete the deploy</p>
+</td></tr>
+</table>
+<h2 is-upgraded>Open the CD AGENTS.md</h2>
+<pre><code language="language-bash" class="language-bash">cloudshell edit starter/cd-agent/AGENTS.md
+</code></pre>
+<p>The persona and 6-step high-level workflow are pre-filled. You&#39;ll see a <code># TODO</code> comment for the <code>## Rules</code> section.</p>
+<h2 is-upgraded>TODO - Add the CD Rules</h2>
+<p>Replace the <code># TODO</code> comment with:</p>
+<pre><code language="language-markdown" class="language-markdown">## Rules
+
+- Always record the stable revision before deploying. Rollback is impossible without it.
+- Never use `gcloud logging read` for health decisions. Use Cloud Monitoring MCP for metrics.
+- Never close the issue on rollback. The fix did not reach production.
+- If no linked issue is found in the PR body, skip the GitHub steps entirely.
+</code></pre>
+<p>Compare your file with <code>cd-agent/AGENTS.md</code> when done.</p>
+<h2 is-upgraded>Concept: The canary monitoring playbook</h2>
+<p>The SKILL.md for the CD agent defines the full canary deploy workflow, including the verdict table the agent applies at each monitoring check:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Condition</p>
+</td><td colspan="1" rowspan="1"><p>Verdict</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>canary_total < 5</code></p>
+</td><td colspan="1" rowspan="1"><p>HOLD (not enough traffic yet - denominator too small)</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>canary_error_rate > 0.05</code> AND <code>> stable_error_rate * 2</code></p>
+</td><td colspan="1" rowspan="1"><p>ROLLBACK</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p><code>canary_error_rate <= 0.05</code></p>
+</td><td colspan="1" rowspan="1"><p>OK</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Two consecutive HOLDs</p>
+</td><td colspan="1" rowspan="1"><p>ROLLBACK (no traffic reaching canary)</p>
+</td></tr>
+</table>
+<p>The agent runs 5 checks, 60 seconds apart. ROLLBACK triggers immediately on any check. Promotion requires all 5 checks to pass.</p>
+<p><strong>Why </strong></p>
+<p><strong><code>canary_total < 5</code></strong></p>
+<p><strong> (HOLD)?</strong> A denominator guard. If only 2 requests have reached the canary, one error gives a 50% error rate - statistical noise, not a real failure. HOLD prevents false ROLLBACKs on a quiet canary window.</p>
+<p><strong>Why </strong></p>
+<p><strong><code>canary_error_rate > 0.05 AND > stable_error_rate * 2</code></strong></p>
+<p><strong>?</strong> Both conditions must be true. A 3% canary error rate is acceptable if the stable revision is also running at 2% - that is a shared infrastructure issue, not a regression. Requiring 2x stable as the threshold filters out baseline noise.</p>
+<p><strong>Why </strong></p>
+<p><strong><code>--to-latest</code></strong></p>
+<p><strong> on promotion?</strong> If you use <code>--to-revisions NEW_REV=100</code>, Cloud Run enters &#34;manual traffic mode.&#34; Future deployments create new revisions but get no traffic until you manually update the traffic config. <code>--to-latest</code> keeps the service in automatic mode where each new deploy automatically becomes active.</p>
+<h2 is-upgraded>Open the CD SKILL.md</h2>
+<pre><code language="language-bash" class="language-bash">cloudshell edit starter/cd-agent/SKILL.md
+</code></pre>
+<p>The trigger and tools sections are pre-filled. You&#39;ll see two <code># TODO</code> comment blocks: one for <code>## Steps</code> and one for <code>## Critical rules</code>.</p>
+<h2 is-upgraded>TODO - Add the Steps and Critical Rules</h2>
+<p>The 12-step workflow covers: authenticate, record stable revision, deploy with <code>--no-traffic</code>, get new revision name, split traffic at 10%, run the monitoring loop with the verdict table, promote or roll back, get the service URL, extract the issue number from the PR body, and post the result.</p>
+<p>Replace the <code>## Steps</code> comment block with:</p>
+<pre><code language="language-markdown" class="language-markdown">## Steps
+
+1. **Authenticate gcloud** using the access token from the prompt:
+   ```bash
+   export CLOUDSDK_AUTH_ACCESS_TOKEN=&lt;token_from_prompt&gt;
+</code></pre>
+<ol type="1" start="2">
+<li><strong>Record the stable revision</strong> before any change:<pre><code language="language-bash" class="language-bash">gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+  --format=&#34;value(REVISION)&#34; --limit=1
+</code></pre>
+Save this as STABLE_REV. This is the rollback target.</li>
+<li><strong>Deploy the new image with no traffic</strong>:<pre><code language="language-bash" class="language-bash">gcloud run deploy &lt;SERVICE&gt; \
+  --image &lt;IMAGE_URL&gt; \
+  --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+  --no-traffic --quiet
+</code></pre>
+</li>
+<li><strong>Get the new revision name</strong>:<pre><code language="language-bash" class="language-bash">gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+  --format=&#34;value(REVISION)&#34; --limit=1
+</code></pre>
+Save this as NEW_REV.</li>
+<li><strong>Split traffic at 10%</strong>:<pre><code language="language-bash" class="language-bash">gcloud run services update-traffic &lt;SERVICE&gt; \
+  --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+  --to-revisions NEW_REV=10,STABLE_REV=90
+</code></pre>
+</li>
+<li><strong>Monitoring loop</strong> - run 5 checks, 60 seconds apart, using Cloud Monitoring MCP:<ul>
+<li>Query <code>run.googleapis.com/request_count</code> for the last 2 minutes, grouped by <code>response_code_class</code></li>
+<li>Compute canary_error_rate and stable_error_rate from 5xx vs total</li>
+<li>Apply the verdict table:</li>
+</ul>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Condition</p>
+</td><td colspan="1" rowspan="1"><p>Verdict</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>canary_total &lt; 5</p>
+</td><td colspan="1" rowspan="1"><p>HOLD</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>canary_error_rate &gt; 0.05 AND &gt; stable_error_rate * 2</p>
+</td><td colspan="1" rowspan="1"><p>ROLLBACK</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>canary_error_rate &lt;= 0.05</p>
+</td><td colspan="1" rowspan="1"><p>OK</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Two consecutive HOLDs</p>
+</td><td colspan="1" rowspan="1"><p>ROLLBACK</p>
+</td></tr>
+</table>
+Stop immediately on ROLLBACK. Proceed to step 7 after all 5 checks pass as OK.</li>
+<li><strong>Promote</strong> (all checks OK):<pre><code language="language-bash" class="language-bash">gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; --to-latest
+</code></pre>
+<strong>Or rollback</strong> (any ROLLBACK verdict):<pre><code language="language-bash" class="language-bash">gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+  --to-revisions STABLE_REV=100
+</code></pre>
+</li>
+<li><strong>Get the service URL</strong>:<pre><code language="language-bash" class="language-bash">gcloud run services describe &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+  --format=&#34;value(status.url)&#34;
+</code></pre>
+</li>
+<li><strong>Find the linked issue number</strong> from the PR body: look for &#34;Closes #N&#34; or &#34;Fixes #N&#34;.</li>
+<li><strong>On success</strong>: post a comment on the issue with the revision name and live URL, then close the issue via GitHub MCP.</li>
+<li><strong>On rollback</strong>: use Cloud Logging MCP to fetch the top 5 recent error log entries for the service. Post a comment on the issue with the error rate, rollback reason, and log entries. Do NOT close the issue.</li>
+<li>If no linked issue is found, skip GitHub steps - the deployment result is complete.</li>
+</ol>
+<pre><code>Replace the `## Critical rules` comment block with:
+
+```markdown
+## Critical rules
+
+- **Always record STABLE_REV before step 3.** Rollback is impossible without it.
+- **Never use Cloud Logging for the promote/rollback decision.** Use Cloud Monitoring MCP only.
+- **Never close the issue on rollback.** The fix did not reach production.
+</code></pre>
+<p>Compare your file with <code>cd-agent/SKILL.md</code> when done.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Invoke the CD Agent" duration="6">
+        <p>The CD workflow calls <code>deploy.py</code> with the PR URL and the pre-built image URL after Cloud Build completes. Let&#39;s write the script.</p>
+<h2 is-upgraded>Concept: Three MCP servers and GCP token freshness</h2>
+<p>The CD agent uses three MCP servers, each at a different stage of the deployment:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>MCP server</p>
+</td><td colspan="1" rowspan="1"><p>When the agent uses it</p>
+</td><td colspan="1" rowspan="1"><p>Why not bash</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>GitHub</p>
+</td><td colspan="1" rowspan="1"><p>Read PR body (extract issue number), post comment, close issue</p>
+</td><td colspan="1" rowspan="1"><p>GitHub API calls need auth - MCP injects it</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Cloud Monitoring</p>
+</td><td colspan="1" rowspan="1"><p>Every 60-second health check during the canary window</p>
+</td><td colspan="1" rowspan="1"><p>Returns aggregated metrics with a denominator; <code>gcloud logging read</code> cannot compute error rate</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Cloud Logging</p>
+</td><td colspan="1" rowspan="1"><p>Only on rollback, to read the actual error messages</p>
+</td><td colspan="1" rowspan="1"><p>Gives the rollback comment its specific failure details</p>
+</td></tr>
+</table>
+<p><strong>Why the GCP token is fetched at runtime, not stored in the agent:</strong> The access token from <code>gcloud auth print-access-token</code> expires in 1 hour. It must be fetched fresh on each run and passed in the prompt. The agent reads it from the prompt and sets <code>CLOUDSDK_AUTH_ACCESS_TOKEN</code> before running any <code>gcloud</code> command.</p>
+<h2 is-upgraded>Open deploy.py</h2>
+<pre><code language="language-bash" class="language-bash">cloudshell edit starter/cd-agent/deploy.py
+</code></pre>
+<p>The imports, env vars, GCP token fetch, and client initialization are pre-filled. You&#39;ll see two <code># TODO</code> comments inside the <code>deploy()</code> function. Work through them in order.</p>
+<h2 is-upgraded>TODO 1 - Build the deployment prompt</h2>
+<p>The prompt carries everything the agent cannot know from SKILL.md at runtime:</p>
+<p>Find the <code># TODO 1</code> comment and replace it with:</p>
+<pre><code language="language-python" class="language-python">prompt = (
+    f&#34;Deploy this merged PR to Cloud Run: {pr_url}\n&#34;
+    f&#34;Container image (already built): {image_url}\n&#34;
+    f&#34;GCP access token: {gcp_token}\n&#34;
+    f&#34;Project: {PROJECT_ID}\n&#34;
+    f&#34;Region: {REGION}\n&#34;
+    f&#34;Service: {SERVICE_NAME}\n\n&#34;
+    f&#34;Follow the canary deploy skill. Monitor for 5 minutes, then promote or rollback. &#34;
+    f&#34;Close the linked GitHub issue on success.&#34;
+)
+</code></pre>
+<p><strong><code>gcp_token</code></strong> is the output of <code>gcloud auth print-access-token</code>. The agent sets <code>CLOUDSDK_AUTH_ACCESS_TOKEN</code> in its shell environment before running any <code>gcloud</code> command, which authenticates all subsequent calls without needing a key file in the sandbox.</p>
+<p><strong><code>PROJECT_ID</code></strong></p>
+<p><strong>, </strong></p>
+<p><strong><code>REGION</code></strong></p>
+<p><strong>, </strong></p>
+<p><strong><code>SERVICE_NAME</code></strong> cannot be inferred from the image URL alone. They are independent configuration values.</p>
+<p><strong><code>image_url</code></strong> is the pre-built container image from the Cloud Build step. The CD agent deploys it; it does not build it.</p>
+<p><strong>&#34;Follow the canary deploy skill&#34;</strong> explicitly instructs the agent to use the SKILL.md playbook. Without it the agent might attempt a simpler direct <code>--to-latest</code> deploy and skip the canary window entirely.</p>
+<h2 is-upgraded>TODO 2 - Call the Interactions API with three MCP servers</h2>
+<p>Find the <code># TODO 2</code> comment and replace it with:</p>
+<pre><code language="language-python" class="language-python">stream = client.interactions.create(
+    agent=CD_AGENT_ID,
+    input=prompt,
+    tools=[
+        {
+            &#34;type&#34;: &#34;mcp_server&#34;,
+            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
+            &#34;name&#34;: &#34;github&#34;,
+            &#34;headers&#34;: {
+                &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
+                &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,
+            },
+        },
+        {
+            &#34;type&#34;: &#34;mcp_server&#34;,
+            &#34;url&#34;: &#34;https://monitoring.googleapis.com/mcp&#34;,
+            &#34;name&#34;: &#34;cloudmonitoring&#34;,
+            &#34;headers&#34;: {&#34;Authorization&#34;: f&#34;Bearer {gcp_token}&#34;},
+        },
+        {
+            &#34;type&#34;: &#34;mcp_server&#34;,
+            &#34;url&#34;: &#34;https://logging.googleapis.com/mcp&#34;,
+            &#34;name&#34;: &#34;cloudlogging&#34;,
+            &#34;headers&#34;: {&#34;Authorization&#34;: f&#34;Bearer {gcp_token}&#34;},
+        },
+    ],
+    stream=True,
+    background=True,
+    store=True,
+)
+
+for event in stream:
+    print(str(event)[:300], flush=True)
+
+print(&#34;CD agent completed.&#34;, flush=True)
+</code></pre>
+<p><strong>GitHub MCP</strong> - the agent uses it to: (1) read the PR body and extract &#34;Closes #N&#34; to get the issue number, (2) post a comment with the deployment result and live URL, and (3) close the issue on successful promotion.</p>
+<p><strong>Cloud Monitoring MCP</strong> - the only tool that returns error rates with a request count denominator. The agent calls it every 60 seconds during the canary window. <code>gcloud monitoring</code> in bash requires complex filter syntax; the MCP exposes a natural-language query interface the agent can use directly.</p>
+<p><strong>Cloud Logging MCP</strong> - used only on rollback, to fetch the actual error messages for the issue comment. Both GCP MCP servers use the same <code>gcp_token</code>.</p>
+<p><strong><code>stream=True</code></strong></p>
+<p><strong>, </strong></p>
+<p><strong><code>background=True</code></strong></p>
+<p><strong>, </strong></p>
+<p><strong><code>store=True</code></strong> have the same meaning as in <code>resolve.py</code>. The CD agent runs for 7-10 minutes (deploy + 5-minute canary window + promote/rollback), which makes <code>background=True</code> especially important here.</p>
+<p>Compare your completed file with <code>cd-agent/deploy.py</code> when done.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Review and Deploy" duration="8">
+        <p>The resolver agent&#39;s workflow is complete. It has opened a PR. You will review it, merge it, and watch the CD agent deploy the fix.</p>
 <h2 is-upgraded>Review and merge the PR</h2>
-<p>When the workflow completes, check the open PRs:</p>
+<p>When the resolver agent&#39;s workflow completes, check the open PRs:</p>
 <pre><code language="language-bash" class="language-bash">gh pr list
 </code></pre>
 <p>You should see one PR from <code>fix/issue-1</code>:</p>
@@ -944,124 +1062,14 @@ stream = client.interactions.create(
 <li>Use <code>.lower()</code> in <code>search_by_speaker</code></li>
 <li>Replace <code>len(SESSIONS)</code> with <code>len(sessions)</code> in <code>session_count</code></li>
 </ul>
+<aside class="special"><p><strong>Always review before merging.</strong> The agent is autonomous but you are the last line of defense. Check that the fix is targeted: only the four buggy functions should change. If the agent modified unrelated files or added unnecessary code, close the PR and re-open the issue.</p>
+</aside>
 <p>Merge it:</p>
 <pre><code language="language-bash" class="language-bash">gh pr merge 2 --squash --delete-branch
 </code></pre>
 <p>This triggers the CD workflow immediately.</p>
-<aside class="special"><p><strong>Always review before merging.</strong> The agent is autonomous but you are the last line of defense. Check that the fix is targeted: only the four buggy functions should change. If the agent modified unrelated files or added unnecessary code, close the PR and re-open the issue.</p>
-</aside>
-
-
-      </google-codelab-step>
-    
-      <google-codelab-step label="Watch the CD Agent Deploy" duration="8">
-        <p>Merging the PR triggers the CD workflow. The CD agent follows a canary deployment strategy: deploy at 10% traffic, monitor error rates for 5 minutes via Cloud Monitoring MCP, then promote or roll back automatically.</p>
-<h2 is-upgraded>What the CD workflow does</h2>
-<p>Merging the PR triggers <code>deploy.yml</code>, which:</p>
-<ol type="1">
-<li>Authenticates to GCP using the service account key</li>
-<li>Runs <code>gcloud builds submit --async</code> to build the Docker image from <code>target-app/</code></li>
-<li>Polls <code>gcloud builds describe</code> every 15 seconds until the build completes</li>
-<li>Calls <code>cd-agent/deploy.py</code> with the PR URL and image URL</li>
-</ol>
-<p><code>deploy.py</code> then calls <code>client.interactions.create(agent=CD_AGENT_ID, ...)</code> and streams the CD agent&#39;s output.</p>
-<h2 is-upgraded>Inspect the CD agent configuration</h2>
-<p><strong>AGENTS.md sets the constraints</strong> (<code>cd-agent/AGENTS.md</code>):</p>
-<p>The CD agent&#39;s rules exist to prevent unsafe deployment patterns:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Rule</p>
-</td><td colspan="1" rowspan="1"><p>What failure it prevents</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Always record the stable revision before deploying</p>
-</td><td colspan="1" rowspan="1"><p>Rollback is impossible without it - there is no &#34;undo&#34; on Cloud Run traffic splits</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Never use <code>gcloud logging read</code> for health decisions</p>
-</td><td colspan="1" rowspan="1"><p>Log ingestion has 30-90 second delay and no denominator - logs cannot tell you error rate</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Never close the issue on rollback</p>
-</td><td colspan="1" rowspan="1"><p>The fix did not reach production - the issue stays open for investigation</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>If no linked issue found in PR, skip GitHub steps</p>
-</td><td colspan="1" rowspan="1"><p>Defensive: not every PR has an issue reference</p>
-</td></tr>
-</table>
-<p><strong>SKILL.md defines the canary workflow</strong> (<code>cd-agent/SKILL.md</code>):</p>
-<p>The playbook is mounted at <code>/.agent/skills/deploy/</code>. It specifies the exact verdict table the agent applies at each monitoring check:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Condition</p>
-</td><td colspan="1" rowspan="1"><p>Verdict</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>canary_total < 5</code></p>
-</td><td colspan="1" rowspan="1"><p>HOLD (not enough traffic yet)</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>canary_error_rate > 0.05</code> AND <code>> stable_error_rate × 2</code></p>
-</td><td colspan="1" rowspan="1"><p>ROLLBACK</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p><code>canary_error_rate <= 0.05</code></p>
-</td><td colspan="1" rowspan="1"><p>OK</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Two consecutive HOLDs</p>
-</td><td colspan="1" rowspan="1"><p>ROLLBACK (no traffic reaching canary)</p>
-</td></tr>
-</table>
-<p>The agent runs 5 checks, 60 seconds apart. ROLLBACK triggers immediately on any check. Promotion requires all 5 checks to pass.</p>
-<p><strong>Inspect the data plane call</strong> (<code>cd-agent/deploy.py</code>):</p>
-<pre><code language="language-bash" class="language-bash">cat cd-agent/deploy.py
-</code></pre>
-<pre><code language="language-python" class="language-python"># GCP access token fetched at call time - expires and rotates, cannot be stored in agent
-gcp_token = subprocess.check_output([&#34;gcloud&#34;, &#34;auth&#34;, &#34;print-access-token&#34;]).decode().strip()
-
-stream = client.interactions.create(
-    agent=CD_AGENT_ID,
-    input=prompt,   # PR URL, image URL, project, region, service - everything that changes per run
-    tools=[
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
-            &#34;name&#34;: &#34;github&#34;,
-            &#34;headers&#34;: {&#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
-                        &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;},
-        },
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://monitoring.googleapis.com/mcp&#34;,
-            &#34;name&#34;: &#34;cloudmonitoring&#34;,
-            &#34;headers&#34;: {&#34;Authorization&#34;: f&#34;Bearer {gcp_token}&#34;},  # GCP token, not API key
-        },
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://logging.googleapis.com/mcp&#34;,
-            &#34;name&#34;: &#34;cloudlogging&#34;,
-            &#34;headers&#34;: {&#34;Authorization&#34;: f&#34;Bearer {gcp_token}&#34;},  # used only on rollback
-        },
-    ],
-    stream=True,
-    background=True,
-    store=True,
-)
-</code></pre>
-<p>Three MCP servers, each used at a different stage:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>MCP server</p>
-</td><td colspan="1" rowspan="1"><p>When the agent uses it</p>
-</td><td colspan="1" rowspan="1"><p>Why not bash</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>GitHub</p>
-</td><td colspan="1" rowspan="1"><p>Read PR body (extract issue number), post comment, close issue</p>
-</td><td colspan="1" rowspan="1"><p>GitHub API calls need auth - MCP injects it without storing tokens in the sandbox</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Cloud Monitoring</p>
-</td><td colspan="1" rowspan="1"><p>Every 60-second health check during the 5-minute canary window</p>
-</td><td colspan="1" rowspan="1"><p>Returns aggregated metrics with a denominator; <code>gcloud logging read</code> cannot compute error rate</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Cloud Logging</p>
-</td><td colspan="1" rowspan="1"><p>Only on rollback, to read the actual error messages</p>
-</td><td colspan="1" rowspan="1"><p>Gives the rollback comment its specific failure details</p>
-</td></tr>
-</table>
-<p><strong>Why the GCP token is in the prompt, not the agent definition:</strong> The access token from <code>gcloud auth print-access-token</code> expires in 1 hour and cannot be stored at agent creation time. It is fetched fresh on each <code>deploy.py</code> run and passed in the prompt. The agent reads it and sets <code>CLOUDSDK_AUTH_ACCESS_TOKEN</code> before running any <code>gcloud</code> command.</p>
 <h2 is-upgraded>What the CD agent does</h2>
-<p>The CD agent follows the <code>deploy</code> skill playbook end-to-end:</p>
+<p>The CD agent follows the <code>deploy</code> skill playbook you wrote, end-to-end:</p>
 <ol type="1">
 <li><strong>Records the stable revision</strong>: saves the current Cloud Run revision name before touching anything</li>
 <li><strong>Deploys with </strong><strong><code>--no-traffic</code></strong>: new image lands in Cloud Run but receives zero requests</li>
@@ -1074,15 +1082,13 @@ stream = client.interactions.create(
 </li>
 <li><strong>Closes the linked issue</strong> via GitHub MCP with the revision name and live URL</li>
 </ol>
-<p>Watch the workflow:</p>
+<h2 is-upgraded>Watch the CD workflow</h2>
 <pre><code language="language-bash" class="language-bash">gh run watch
 </code></pre>
 <p>When the CD agent completes, check the linked issue is closed:</p>
 <pre><code language="language-bash" class="language-bash">gh issue list --state closed
 </code></pre>
-<p>And verify the fix is live in your browser: the track filter should now work.</p>
-<aside class="special"><p><strong>Why </strong><strong><code>--to-latest</code></strong><strong> on promotion?</strong> If you use <code>--to-revisions NEW_REV=100</code>, Cloud Run enters &#34;manual traffic mode.&#34; Future deployments create new revisions but get no traffic until you manually update the traffic config. Using <code>--to-latest</code> keeps the service in automatic mode where each new deploy automatically becomes the active revision.</p>
-</aside>
+<p>Verify the fix is live in your browser: the track filter should now work.</p>
 <aside class="warning"><p><strong>If the CD agent times out</strong>: This is rare but can happen if Cloud Build takes longer than expected. Re-trigger by re-merging the PR or running <code>uv run python cd-agent/deploy.py <pr_url> <image_url></code> locally.</p>
 </aside>
 
@@ -1096,23 +1102,19 @@ stream = client.interactions.create(
 </code></pre>
 <p>The script:</p>
 <ol type="1">
-<li><strong>Waits</strong> for any in-progress CD workflows to finish (polls every 15 seconds)</li>
-<li><strong>Closes</strong> all open PRs (agent-opened or otherwise)</li>
+<li><strong>Waits</strong> for any in-progress CD workflows to finish</li>
+<li><strong>Closes</strong> all open PRs</li>
 <li><strong>Restores </strong><code>target-app/utils.py</code> from <code>setup/utils_broken.py</code> (the canonical broken version)</li>
 <li><strong>Commits and pushes</strong> the reset to master</li>
-<li><strong>Redeploys</strong> the broken app to Cloud Run with <code>gcloud run deploy --source</code></li>
+<li><strong>Redeploys</strong> the broken app to Cloud Run</li>
 </ol>
 <p>When done:</p>
 <pre><code language="language-text" class="language-text">Done. Demo is reset and ready.
 Open a new issue with the &#39;ai-resolve&#39; label to trigger the agent.
 </code></pre>
-<p>You can now repeat from the Trigger Issue Resolution step.</p>
-<aside class="special"><p><strong>Why </strong><strong><code>setup/utils_broken.py</code></strong><strong>?</strong> The reset script copies from this canonical file rather than reverting with git. The agent never writes to <code>setup/</code> (it only clones <code>target-app/</code>), so <code>utils_broken.py</code> is never accidentally modified. It is always the correct broken state regardless of agent activity.</p>
-</aside>
-<aside class="warning"><p><strong>Push conflicts after CD workflow</strong>: If a CD workflow was running when you started the reset, <code>git push</code> may be rejected with a non-fast-forward error. Run <code>git pull --rebase && git push</code> to resolve.</p>
+<aside class="special"><p><strong>Why </strong><strong><code>setup/utils_broken.py</code></strong><strong>?</strong> The reset script copies from this canonical file rather than reverting with git. The agent never writes to <code>setup/</code> (it only clones <code>target-app/</code>), so <code>utils_broken.py</code> is never accidentally modified.</p>
 </aside>
 <h2 is-upgraded>Remove all resources</h2>
-<p>Remove all Google Cloud resources to avoid ongoing charges.</p>
 <p>Delete the Cloud Run service:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
 
@@ -1173,19 +1175,18 @@ gcloud storage buckets list --project=$PROJECT_ID
 </table>
 <h2 is-upgraded>Key patterns you learned</h2>
 <ol type="1">
-<li><strong>Antigravity harness</strong>: pin the execution engine version with <code>base_agent="antigravity-preview-05-2026"</code>; Gemini 3.5 Flash runs inside the same sandbox as your code, with no round-trips between reasoning and execution</li>
-<li><strong>Two-plane architecture</strong>: Agents API (control plane) manages named agent lifecycle; Interactions API (data plane) invokes agents at runtime - configuration is separate from invocation</li>
-<li><strong>AGENTS.md vs SKILL.md</strong>: AGENTS.md is the system instruction (who the agent IS, what it MUST NOT do); SKILL.md is the playbook (what steps to follow); updated independently by different teams</li>
-<li><strong>Hosted MCP servers</strong>: connect GitHub, Cloud Monitoring, and Cloud Logging at interaction time, with no deployment and no custom integration code</li>
-<li><strong><code>X-MCP-Exclude-Tools</code></strong>: prevent tool name conflicts between MCP servers and the sandbox built-in tools</li>
-<li><strong><code>background=True</code></strong><strong> + </strong><strong><code>store=True</code></strong>: run long agent interactions asynchronously and stream live events</li>
-<li><strong>Canary traffic splitting</strong>: <code>--no-traffic</code> deploy, then <code>--to-revisions NEW_REV=10</code>, then <code>--to-latest</code> promote</li>
-<li><strong><code>setup/utils_broken.py</code></strong>: keep a canonical broken state outside the agent&#39;s working directory for reliable reset</li>
+<li><strong>AGENTS.md vs SKILL.md</strong>: AGENTS.md is the system instruction (who the agent IS, what it MUST NOT do); SKILL.md is the playbook (what steps to follow); authored independently by different teams</li>
+<li><strong>Two-plane architecture</strong>: Agents API (control plane) registers named agents once; Interactions API (data plane) invokes them at runtime - configuration is separate from invocation</li>
+<li><strong>Antigravity harness</strong>: pin the execution engine version with <code>base_agent="antigravity-preview-05-2026"</code>; the model and compute run in the same sandbox with no round-trips</li>
+<li><strong>Hosted MCP servers</strong>: connect GitHub, Cloud Monitoring, and Cloud Logging at interaction time, with no deployment required</li>
+<li><strong><code>background=True</code></strong><strong> + </strong><strong><code>store=True</code></strong>: run long agent tasks asynchronously and stream live events to your workflow log</li>
+<li><strong><code>X-MCP-Exclude-Tools</code></strong>: prevent tool name conflicts between MCP servers and sandbox built-in tools</li>
+<li><strong>Canary traffic splitting</strong>: <code>--no-traffic</code> deploy, split at 10%, monitor with Cloud Monitoring MCP, then <code>--to-latest</code> or rollback</li>
 </ol>
 <h2 is-upgraded>Next steps</h2>
 <ul>
 <li>Extend the resolver SKILL.md to handle multi-file bugs or JavaScript projects</li>
-<li>Add a second issue type (performance regression, wrong output format) and trigger it with a different label</li>
+<li>Add a second issue type with a different label and a separate skill</li>
 <li>Replace the canary monitoring interval: try querying every 30 seconds for 10 minutes</li>
 <li>Explore multi-turn interactions using <code>environment=<env_id></code> + <code>previous_interaction_id=<interaction_id></code></li>
 <li>Add a Slack MCP server to post deployment notifications</li>

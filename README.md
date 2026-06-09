@@ -134,6 +134,14 @@ docs/                   # generated codelab (GitHub Pages source)
 
 The step-by-step workshop is in `codelab/index.lab.md` (Google Codelabs format). The generated HTML is published from `docs/` via GitHub Pages.
 
+The workshop starter files and codelab are on the **`codelab-workshop`** branch. Participants clone that branch and push as `master` to their own repo:
+
+```bash
+git clone --branch codelab-workshop https://github.com/Saoussen-CH/managed-issue-resolver.git
+cd managed-issue-resolver
+git checkout -b master
+```
+
 To regenerate after editing `index.lab.md`:
 
 ```bash

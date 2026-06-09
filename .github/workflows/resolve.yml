@@ -45,4 +45,4 @@ jobs:
           RESOLVER_AGENT_ID: ${{ secrets.RESOLVER_AGENT_ID }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python resolver/resolve.py "${{ github.event.issue.html_url }}"
+        run: python starter/resolver/resolve.py "${{ github.event.issue.html_url }}"

@@ -64,6 +64,6 @@ jobs:
           CD_AGENT_ID: ${{ secrets.CD_AGENT_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python cd-agent/deploy.py \
+          python starter/cd-agent/deploy.py \
             "${{ github.event.pull_request.html_url }}" \
             "${{ steps.build.outputs.image }}"
