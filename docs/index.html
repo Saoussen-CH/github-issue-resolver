@@ -54,15 +54,13 @@
     end
 
     subgraph RA[&#34;Resolver Agent - Gemini Enterprise Agent Platform&#34;]
-        B --&gt; C[Read issue via GitHub MCP]
-        C --&gt; D[&#34;git clone + pip install&#34;]
-        D --&gt; E[Run pytest - record failures]
-        E --&gt; F[Fix utils.py]
-        F --&gt; G[Run pytest - all pass]
-        G --&gt; H[Push branch + open PR via GitHub MCP]
+        RA_H((Antigravity\nharness))
+        RA_H --&gt;|read issue · open PR| RA_GH[GitHub MCP]
+        RA_H --&gt;|clone · test · fix · verify| RA_EXEC[code_execution]
     end
 
-    H --&gt; I([Human reviews and merges PR])
+    B --&gt; RA_H
+    RA_GH --&gt; I([Human reviews and merges PR])
     I --&gt; J
 
     subgraph GHA2[&#34;GitHub Actions: deploy.yml&#34;]
@@ -71,17 +69,20 @@
     end
 
     subgraph CDA[&#34;CD Agent - Gemini Enterprise Agent Platform&#34;]
-        K --&gt; L[Deploy canary revision at 10%]
-        L --&gt; M{Poll Cloud Monitoring MCP\nevery 60s for 5 minutes}
-        M --&gt;|error rate OK| M
-        M --&gt;|all checks pass| N[Promote via --to-latest]
-        M --&gt;|error rate too high| O[Rollback to stable revision]
-        N --&gt; P[Close issue via GitHub MCP]
-        O --&gt; Q[Comment rollback details via GitHub MCP\nusing Cloud Logging MCP for error context]
+        CD_H((Antigravity\nharness))
+        CD_H --&gt;|deploy --no-traffic · split 10%| CD_EXEC[code_execution · gcloud]
+        CD_H --&gt;|5 checks · 60s apart| CD_MON[Cloud Monitoring MCP]
+        CD_MON --&gt; CD_V{promote or\nrollback?}
+        CD_V --&gt;|all checks OK| CD_P[code_execution · --to-latest]
+        CD_V --&gt;|error rate too high| CD_R[code_execution · restore stable]
+        CD_P --&gt; CD_GH[GitHub MCP · close issue]
+        CD_R --&gt; CD_LOG[Cloud Logging MCP · fetch errors]
+        CD_LOG --&gt; CD_GH2[GitHub MCP · post comment]
     end
 
-    P --&gt; R([Issue closed with live URL])
-    Q --&gt; S([Issue stays open for investigation])
+    K --&gt; CD_H
+    CD_GH --&gt; R([Issue closed with live URL])
+    CD_GH2 --&gt; S([Issue stays open for investigation])
 </code></pre>
 <h2 is-upgraded>The app you&#39;ll fix</h2>
 <p>A conference session browser showing 12 sessions across 5 tracks (AI &amp; ML, Cloud, Mobile, Web, Security) over 2 days. The app has four seeded bugs, all in <code>utils.py</code>:</p>

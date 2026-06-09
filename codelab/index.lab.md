@@ -47,15 +47,13 @@ flowchart TD
     end
 
     subgraph RA["Resolver Agent - Gemini Enterprise Agent Platform"]
-        B --> C[Read issue via GitHub MCP]
-        C --> D["git clone + pip install"]
-        D --> E[Run pytest - record failures]
-        E --> F[Fix utils.py]
-        F --> G[Run pytest - all pass]
-        G --> H[Push branch + open PR via GitHub MCP]
+        RA_H((Antigravity\nharness))
+        RA_H -->|read issue · open PR| RA_GH[GitHub MCP]
+        RA_H -->|clone · test · fix · verify| RA_EXEC[code_execution]
     end
 
-    H --> I([Human reviews and merges PR])
+    B --> RA_H
+    RA_GH --> I([Human reviews and merges PR])
     I --> J
 
     subgraph GHA2["GitHub Actions: deploy.yml"]
@@ -64,17 +62,20 @@ flowchart TD
     end
 
     subgraph CDA["CD Agent - Gemini Enterprise Agent Platform"]
-        K --> L[Deploy canary revision at 10%]
-        L --> M{Poll Cloud Monitoring MCP\nevery 60s for 5 minutes}
-        M -->|error rate OK| M
-        M -->|all checks pass| N[Promote via --to-latest]
-        M -->|error rate too high| O[Rollback to stable revision]
-        N --> P[Close issue via GitHub MCP]
-        O --> Q[Comment rollback details via GitHub MCP\nusing Cloud Logging MCP for error context]
+        CD_H((Antigravity\nharness))
+        CD_H -->|deploy --no-traffic · split 10%| CD_EXEC[code_execution · gcloud]
+        CD_H -->|5 checks · 60s apart| CD_MON[Cloud Monitoring MCP]
+        CD_MON --> CD_V{promote or\nrollback?}
+        CD_V -->|all checks OK| CD_P[code_execution · --to-latest]
+        CD_V -->|error rate too high| CD_R[code_execution · restore stable]
+        CD_P --> CD_GH[GitHub MCP · close issue]
+        CD_R --> CD_LOG[Cloud Logging MCP · fetch errors]
+        CD_LOG --> CD_GH2[GitHub MCP · post comment]
     end
 
-    P --> R([Issue closed with live URL])
-    Q --> S([Issue stays open for investigation])
+    K --> CD_H
+    CD_GH --> R([Issue closed with live URL])
+    CD_GH2 --> S([Issue stays open for investigation])
 ```
 
 ### The app you'll fix
