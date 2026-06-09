@@ -608,7 +608,7 @@ The `system_instruction` variable is already read from the AGENTS.md file at the
 directly to the API:
 
 ```python
-system_instruction=system_instruction,
+        system_instruction=system_instruction,
 ```
 
 This is stored in the agent definition on the control plane and applied before every interaction. It is the
@@ -621,11 +621,11 @@ Built-in tool capabilities are activated at agent creation time and cannot be ad
 the agent:
 
 ```python
-tools=[
-    {"type": "code_execution"},
-    {"type": "google_search"},
-    {"type": "url_context"},
-],
+        tools=[
+            {"type": "code_execution"},
+            {"type": "google_search"},
+            {"type": "url_context"},
+        ],
 ```
 
 **`code_execution`** gives the agent a full bash and Python environment - `git`, `pytest`, `pip`, and all
@@ -642,17 +642,17 @@ link to a relevant doc or stack trace.
 The base environment defines the sandbox and what files are pre-loaded when it starts:
 
 ```python
-base_environment={
-    "type": "remote",
-    "sources": [
-        {
-            "type": "gcs",
-            "source": f"gs://{GCS_SKILLS_BUCKET}/{agent_home_gcs_prefix}",
-            "target": "/.agent",
-        }
-    ],
-    "network": {"allowlist": [{"domain": "*"}]},
-},
+        base_environment={
+            "type": "remote",
+            "sources": [
+                {
+                    "type": "gcs",
+                    "source": f"gs://{GCS_SKILLS_BUCKET}/{agent_home_gcs_prefix}",
+                    "target": "/.agent",
+                }
+            ],
+            "network": {"allowlist": [{"domain": "*"}]},
+        },
 ```
 
 **`"type": "remote"`** - a managed hosted sandbox provisioned by the platform. The agent does not run locally.
@@ -841,14 +841,14 @@ authenticated clone URL (to `git clone` and `git push` without an interactive au
 Find the `# TODO 1` comment and replace it with:
 
 ```python
-auth_repo_url = REPO_URL.replace("https://", f"https://x-access-token:{GH_TOKEN}@")
+    auth_repo_url = REPO_URL.replace("https://", f"https://x-access-token:{GH_TOKEN}@")
 
-prompt = (
-    f"Resolve this GitHub issue: {issue_url}\n"
-    f"Repository clone URL (authenticated): {auth_repo_url}\n\n"
-    f"Use the GitHub MCP server to read the issue and open the PR. "
-    f"Use the authenticated clone URL for git clone and git push."
-)
+    prompt = (
+        f"Resolve this GitHub issue: {issue_url}\n"
+        f"Repository clone URL (authenticated): {auth_repo_url}\n\n"
+        f"Use the GitHub MCP server to read the issue and open the PR. "
+        f"Use the authenticated clone URL for git clone and git push."
+    )
 ```
 
 **`x-access-token:{GH_TOKEN}@`** is Git's URL-embedded credential format. Placing the token in the URL means
@@ -864,29 +864,29 @@ work (orientation, test, fix, commit sequence) is already in SKILL.md, mounted a
 Find the `# TODO 2` comment and replace it with:
 
 ```python
-stream = client.interactions.create(
-    agent=RESOLVER_AGENT_ID,
-    input=prompt,
-    tools=[
-        {
-            "type": "mcp_server",
-            "url": "https://api.githubcopilot.com/mcp/",
-            "name": "github",
-            "headers": {
-                "Authorization": f"Bearer {GH_TOKEN}",
-                "X-MCP-Exclude-Tools": "delete_file",
+    stream = client.interactions.create(
+        agent=RESOLVER_AGENT_ID,
+        input=prompt,
+        tools=[
+            {
+                "type": "mcp_server",
+                "url": "https://api.githubcopilot.com/mcp/",
+                "name": "github",
+                "headers": {
+                    "Authorization": f"Bearer {GH_TOKEN}",
+                    "X-MCP-Exclude-Tools": "delete_file",
+                },
             },
-        },
-    ],
-    stream=True,
-    background=True,
-    store=True,
-)
+        ],
+        stream=True,
+        background=True,
+        store=True,
+    )
 
-for event in stream:
-    print(str(event)[:300], flush=True)
+    for event in stream:
+        print(str(event)[:300], flush=True)
 
-print("Agent completed.", flush=True)
+    print("Agent completed.", flush=True)
 ```
 
 **`agent=RESOLVER_AGENT_ID`** - the named agent ID. All agent config (system instruction, SKILL.md files,
@@ -1190,16 +1190,16 @@ The prompt carries everything the agent cannot know from SKILL.md at runtime:
 Find the `# TODO 1` comment and replace it with:
 
 ```python
-prompt = (
-    f"Deploy this merged PR to Cloud Run: {pr_url}\n"
-    f"Container image (already built): {image_url}\n"
-    f"GCP access token: {gcp_token}\n"
-    f"Project: {PROJECT_ID}\n"
-    f"Region: {REGION}\n"
-    f"Service: {SERVICE_NAME}\n\n"
-    f"Follow the canary deploy skill. Monitor for 5 minutes, then promote or rollback. "
-    f"Close the linked GitHub issue on success."
-)
+    prompt = (
+        f"Deploy this merged PR to Cloud Run: {pr_url}\n"
+        f"Container image (already built): {image_url}\n"
+        f"GCP access token: {gcp_token}\n"
+        f"Project: {PROJECT_ID}\n"
+        f"Region: {REGION}\n"
+        f"Service: {SERVICE_NAME}\n\n"
+        f"Follow the canary deploy skill. Monitor for 5 minutes, then promote or rollback. "
+        f"Close the linked GitHub issue on success."
+    )
 ```
 
 **`gcp_token`** is the output of `gcloud auth print-access-token`. The agent sets
@@ -1220,41 +1220,41 @@ the agent might attempt a simpler direct `--to-latest` deploy and skip the canar
 Find the `# TODO 2` comment and replace it with:
 
 ```python
-stream = client.interactions.create(
-    agent=CD_AGENT_ID,
-    input=prompt,
-    tools=[
-        {
-            "type": "mcp_server",
-            "url": "https://api.githubcopilot.com/mcp/",
-            "name": "github",
-            "headers": {
-                "Authorization": f"Bearer {GH_TOKEN}",
-                "X-MCP-Exclude-Tools": "delete_file",
+    stream = client.interactions.create(
+        agent=CD_AGENT_ID,
+        input=prompt,
+        tools=[
+            {
+                "type": "mcp_server",
+                "url": "https://api.githubcopilot.com/mcp/",
+                "name": "github",
+                "headers": {
+                    "Authorization": f"Bearer {GH_TOKEN}",
+                    "X-MCP-Exclude-Tools": "delete_file",
+                },
             },
-        },
-        {
-            "type": "mcp_server",
-            "url": "https://monitoring.googleapis.com/mcp",
-            "name": "cloudmonitoring",
-            "headers": {"Authorization": f"Bearer {gcp_token}"},
-        },
-        {
-            "type": "mcp_server",
-            "url": "https://logging.googleapis.com/mcp",
-            "name": "cloudlogging",
-            "headers": {"Authorization": f"Bearer {gcp_token}"},
-        },
-    ],
-    stream=True,
-    background=True,
-    store=True,
-)
+            {
+                "type": "mcp_server",
+                "url": "https://monitoring.googleapis.com/mcp",
+                "name": "cloudmonitoring",
+                "headers": {"Authorization": f"Bearer {gcp_token}"},
+            },
+            {
+                "type": "mcp_server",
+                "url": "https://logging.googleapis.com/mcp",
+                "name": "cloudlogging",
+                "headers": {"Authorization": f"Bearer {gcp_token}"},
+            },
+        ],
+        stream=True,
+        background=True,
+        store=True,
+    )
 
-for event in stream:
-    print(str(event)[:300], flush=True)
+    for event in stream:
+        print(str(event)[:300], flush=True)
 
-print("CD agent completed.", flush=True)
+    print("CD agent completed.", flush=True)
 ```
 
 **GitHub MCP** - the agent uses it to: (1) read the PR body and extract "Closes #N" to get the issue number,

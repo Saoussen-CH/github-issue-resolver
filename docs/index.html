@@ -497,33 +497,33 @@ Note: recreate agents after changing SKILL.md or AGENTS.md files:
 <p>The client initialization, file reads, function signature, and polling loop are pre-filled. You&#39;ll see three <code># TODO</code> comments inside the <code>client.agents.create()</code> call. Work through them in order.</p>
 <h2 is-upgraded>TODO 1 - Pass <code>system_instruction</code></h2>
 <p>The <code>system_instruction</code> variable is already read from the AGENTS.md file at the top of the file. Pass it directly to the API:</p>
-<pre><code language="language-python" class="language-python">system_instruction=system_instruction,
+<pre><code language="language-python" class="language-python">        system_instruction=system_instruction,
 </code></pre>
 <p>This is stored in the agent definition on the control plane and applied before every interaction. It is the same content that <code>upload_skills.sh</code> uploads to GCS at <code>/.agent/AGENTS.md</code> - both paths carry the same text. The parameter is stored at agent creation; the GCS file is read at runtime by the harness.</p>
 <h2 is-upgraded>TODO 2 - Add the <code>tools</code> list</h2>
 <p>Built-in tool capabilities are activated at agent creation time and cannot be added later without recreating the agent:</p>
-<pre><code language="language-python" class="language-python">tools=[
-    {&#34;type&#34;: &#34;code_execution&#34;},
-    {&#34;type&#34;: &#34;google_search&#34;},
-    {&#34;type&#34;: &#34;url_context&#34;},
-],
+<pre><code language="language-python" class="language-python">        tools=[
+            {&#34;type&#34;: &#34;code_execution&#34;},
+            {&#34;type&#34;: &#34;google_search&#34;},
+            {&#34;type&#34;: &#34;url_context&#34;},
+        ],
 </code></pre>
 <p><strong><code>code_execution</code></strong> gives the agent a full bash and Python environment - <code>git</code>, <code>pytest</code>, <code>pip</code>, and all standard Unix tools. Without this, the agent can only produce text; it cannot run any commands.</p>
 <p><strong><code>google_search</code></strong> allows the agent to search the web. The resolver does not use it for the fix workflow, but it is available if the agent needs to look up an error message it encounters.</p>
 <p><strong><code>url_context</code></strong> lets the agent fetch and read the content at a URL. Useful if the issue body contains a link to a relevant doc or stack trace.</p>
 <h2 is-upgraded>TODO 3 - Add <code>base_environment</code></h2>
 <p>The base environment defines the sandbox and what files are pre-loaded when it starts:</p>
-<pre><code language="language-python" class="language-python">base_environment={
-    &#34;type&#34;: &#34;remote&#34;,
-    &#34;sources&#34;: [
-        {
-            &#34;type&#34;: &#34;gcs&#34;,
-            &#34;source&#34;: f&#34;gs://{GCS_SKILLS_BUCKET}/{agent_home_gcs_prefix}&#34;,
-            &#34;target&#34;: &#34;/.agent&#34;,
-        }
-    ],
-    &#34;network&#34;: {&#34;allowlist&#34;: [{&#34;domain&#34;: &#34;*&#34;}]},
-},
+<pre><code language="language-python" class="language-python">        base_environment={
+            &#34;type&#34;: &#34;remote&#34;,
+            &#34;sources&#34;: [
+                {
+                    &#34;type&#34;: &#34;gcs&#34;,
+                    &#34;source&#34;: f&#34;gs://{GCS_SKILLS_BUCKET}/{agent_home_gcs_prefix}&#34;,
+                    &#34;target&#34;: &#34;/.agent&#34;,
+                }
+            ],
+            &#34;network&#34;: {&#34;allowlist&#34;: [{&#34;domain&#34;: &#34;*&#34;}]},
+        },
 </code></pre>
 <p><strong><code>"type": "remote"</code></strong> - a managed hosted sandbox provisioned by the platform. The agent does not run locally.</p>
 <p><strong><code>"source": f"gs://.../{agent_home_gcs_prefix}"</code></strong> - the GCS prefix is mounted as a directory, not a single file. Everything under <code>resolver/agent-home/</code> lands at <code>/.agent/</code> in the sandbox: <code>AGENTS.md</code> at <code>/.agent/AGENTS.md</code> and the skill at <code>/.agent/skills/fix-issue/SKILL.md</code>. This is why both files must share one GCS prefix - the API rejects two sources that would share the same top-level target directory.</p>
@@ -660,42 +660,42 @@ gcloud artifacts repositories create managed-issue-resolver \
 <h2 is-upgraded>TODO 1 - Build the prompt</h2>
 <p>The agent needs two pieces of information to start: the issue URL (to read it via GitHub MCP) and an authenticated clone URL (to <code>git clone</code> and <code>git push</code> without an interactive auth prompt).</p>
 <p>Find the <code># TODO 1</code> comment and replace it with:</p>
-<pre><code language="language-python" class="language-python">auth_repo_url = REPO_URL.replace(&#34;https://&#34;, f&#34;https://x-access-token:{GH_TOKEN}@&#34;)
+<pre><code language="language-python" class="language-python">    auth_repo_url = REPO_URL.replace(&#34;https://&#34;, f&#34;https://x-access-token:{GH_TOKEN}@&#34;)
 
-prompt = (
-    f&#34;Resolve this GitHub issue: {issue_url}\n&#34;
-    f&#34;Repository clone URL (authenticated): {auth_repo_url}\n\n&#34;
-    f&#34;Use the GitHub MCP server to read the issue and open the PR. &#34;
-    f&#34;Use the authenticated clone URL for git clone and git push.&#34;
-)
+    prompt = (
+        f&#34;Resolve this GitHub issue: {issue_url}\n&#34;
+        f&#34;Repository clone URL (authenticated): {auth_repo_url}\n\n&#34;
+        f&#34;Use the GitHub MCP server to read the issue and open the PR. &#34;
+        f&#34;Use the authenticated clone URL for git clone and git push.&#34;
+    )
 </code></pre>
 <p><strong><code>x-access-token:{GH_TOKEN}@</code></strong> is Git&#39;s URL-embedded credential format. Placing the token in the URL means <code>git clone</code> and <code>git push</code> authenticate silently. <code>x-access-token</code> is the literal username GitHub expects when using a <code>GITHUB_TOKEN</code> in a URL.</p>
 <p><strong>The prompt is minimal by design.</strong> It only carries what changes between runs. Everything about HOW to do the work (orientation, test, fix, commit sequence) is already in SKILL.md, mounted at <code>/.agent/skills/fix-issue/SKILL.md</code> in the sandbox.</p>
 <h2 is-upgraded>TODO 2 - Call the Interactions API</h2>
 <p>Find the <code># TODO 2</code> comment and replace it with:</p>
-<pre><code language="language-python" class="language-python">stream = client.interactions.create(
-    agent=RESOLVER_AGENT_ID,
-    input=prompt,
-    tools=[
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
-            &#34;name&#34;: &#34;github&#34;,
-            &#34;headers&#34;: {
-                &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
-                &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,
+<pre><code language="language-python" class="language-python">    stream = client.interactions.create(
+        agent=RESOLVER_AGENT_ID,
+        input=prompt,
+        tools=[
+            {
+                &#34;type&#34;: &#34;mcp_server&#34;,
+                &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
+                &#34;name&#34;: &#34;github&#34;,
+                &#34;headers&#34;: {
+                    &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
+                    &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,
+                },
             },
-        },
-    ],
-    stream=True,
-    background=True,
-    store=True,
-)
+        ],
+        stream=True,
+        background=True,
+        store=True,
+    )
 
-for event in stream:
-    print(str(event)[:300], flush=True)
+    for event in stream:
+        print(str(event)[:300], flush=True)
 
-print(&#34;Agent completed.&#34;, flush=True)
+    print(&#34;Agent completed.&#34;, flush=True)
 </code></pre>
 <p><strong><code>agent=RESOLVER_AGENT_ID</code></strong> - the named agent ID. All agent config (system instruction, SKILL.md files, built-in tools) is loaded from the agent definition on the platform; you do not re-pass any of it here.</p>
 <p><strong><code>stream=True</code></strong> yields server-sent events as the agent works. Iterating and printing to stdout sends live agent progress to the GitHub Actions log.</p>
@@ -943,16 +943,16 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <h2 is-upgraded>TODO 1 - Build the deployment prompt</h2>
 <p>The prompt carries everything the agent cannot know from SKILL.md at runtime:</p>
 <p>Find the <code># TODO 1</code> comment and replace it with:</p>
-<pre><code language="language-python" class="language-python">prompt = (
-    f&#34;Deploy this merged PR to Cloud Run: {pr_url}\n&#34;
-    f&#34;Container image (already built): {image_url}\n&#34;
-    f&#34;GCP access token: {gcp_token}\n&#34;
-    f&#34;Project: {PROJECT_ID}\n&#34;
-    f&#34;Region: {REGION}\n&#34;
-    f&#34;Service: {SERVICE_NAME}\n\n&#34;
-    f&#34;Follow the canary deploy skill. Monitor for 5 minutes, then promote or rollback. &#34;
-    f&#34;Close the linked GitHub issue on success.&#34;
-)
+<pre><code language="language-python" class="language-python">    prompt = (
+        f&#34;Deploy this merged PR to Cloud Run: {pr_url}\n&#34;
+        f&#34;Container image (already built): {image_url}\n&#34;
+        f&#34;GCP access token: {gcp_token}\n&#34;
+        f&#34;Project: {PROJECT_ID}\n&#34;
+        f&#34;Region: {REGION}\n&#34;
+        f&#34;Service: {SERVICE_NAME}\n\n&#34;
+        f&#34;Follow the canary deploy skill. Monitor for 5 minutes, then promote or rollback. &#34;
+        f&#34;Close the linked GitHub issue on success.&#34;
+    )
 </code></pre>
 <p><strong><code>gcp_token</code></strong> is the output of <code>gcloud auth print-access-token</code>. The agent sets <code>CLOUDSDK_AUTH_ACCESS_TOKEN</code> in its shell environment before running any <code>gcloud</code> command, which authenticates all subsequent calls without needing a key file in the sandbox.</p>
 <p><strong><code>PROJECT_ID</code></strong></p>
@@ -964,41 +964,41 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <p><strong>&#34;Follow the canary deploy skill&#34;</strong> explicitly instructs the agent to use the SKILL.md playbook. Without it the agent might attempt a simpler direct <code>--to-latest</code> deploy and skip the canary window entirely.</p>
 <h2 is-upgraded>TODO 2 - Call the Interactions API with three MCP servers</h2>
 <p>Find the <code># TODO 2</code> comment and replace it with:</p>
-<pre><code language="language-python" class="language-python">stream = client.interactions.create(
-    agent=CD_AGENT_ID,
-    input=prompt,
-    tools=[
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
-            &#34;name&#34;: &#34;github&#34;,
-            &#34;headers&#34;: {
-                &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
-                &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,
+<pre><code language="language-python" class="language-python">    stream = client.interactions.create(
+        agent=CD_AGENT_ID,
+        input=prompt,
+        tools=[
+            {
+                &#34;type&#34;: &#34;mcp_server&#34;,
+                &#34;url&#34;: &#34;https://api.githubcopilot.com/mcp/&#34;,
+                &#34;name&#34;: &#34;github&#34;,
+                &#34;headers&#34;: {
+                    &#34;Authorization&#34;: f&#34;Bearer {GH_TOKEN}&#34;,
+                    &#34;X-MCP-Exclude-Tools&#34;: &#34;delete_file&#34;,
+                },
             },
-        },
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://monitoring.googleapis.com/mcp&#34;,
-            &#34;name&#34;: &#34;cloudmonitoring&#34;,
-            &#34;headers&#34;: {&#34;Authorization&#34;: f&#34;Bearer {gcp_token}&#34;},
-        },
-        {
-            &#34;type&#34;: &#34;mcp_server&#34;,
-            &#34;url&#34;: &#34;https://logging.googleapis.com/mcp&#34;,
-            &#34;name&#34;: &#34;cloudlogging&#34;,
-            &#34;headers&#34;: {&#34;Authorization&#34;: f&#34;Bearer {gcp_token}&#34;},
-        },
-    ],
-    stream=True,
-    background=True,
-    store=True,
-)
+            {
+                &#34;type&#34;: &#34;mcp_server&#34;,
+                &#34;url&#34;: &#34;https://monitoring.googleapis.com/mcp&#34;,
+                &#34;name&#34;: &#34;cloudmonitoring&#34;,
+                &#34;headers&#34;: {&#34;Authorization&#34;: f&#34;Bearer {gcp_token}&#34;},
+            },
+            {
+                &#34;type&#34;: &#34;mcp_server&#34;,
+                &#34;url&#34;: &#34;https://logging.googleapis.com/mcp&#34;,
+                &#34;name&#34;: &#34;cloudlogging&#34;,
+                &#34;headers&#34;: {&#34;Authorization&#34;: f&#34;Bearer {gcp_token}&#34;},
+            },
+        ],
+        stream=True,
+        background=True,
+        store=True,
+    )
 
-for event in stream:
-    print(str(event)[:300], flush=True)
+    for event in stream:
+        print(str(event)[:300], flush=True)
 
-print(&#34;CD agent completed.&#34;, flush=True)
+    print(&#34;CD agent completed.&#34;, flush=True)
 </code></pre>
 <p><strong>GitHub MCP</strong> - the agent uses it to: (1) read the PR body and extract &#34;Closes #N&#34; to get the issue number, (2) post a comment with the deployment result and live URL, and (3) close the issue on successful promotion.</p>
 <p><strong>Cloud Monitoring MCP</strong> - the only tool that returns error rates with a request count denominator. The agent calls it every 60 seconds during the canary window. <code>gcloud monitoring</code> in bash requires complex filter syntax; the MCP exposes a natural-language query interface the agent can use directly.</p>
