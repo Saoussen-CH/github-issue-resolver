@@ -741,6 +741,7 @@ gcloud artifacts repositories create managed-issue-resolver \
 <pre><code language="language-text" class="language-text">Service URL: https://target-app-xxxx.us-central1.run.app
 </code></pre>
 <p>Open the URL in your browser. Click any track filter: notice the session list goes empty. That is the first of four seeded bugs the agent will fix.</p>
+<p class="image-container"><img alt="Broken app: track filter returns no sessions" src="img/75eaf2ec0325c600.png"></p>
 <aside class="warning"><p><strong><code>--allow-unauthenticated</code></strong><strong> is intentional here.</strong> It makes the app publicly accessible for demo purposes. In production, remove this flag and add IAM-based authentication.</p>
 </aside>
 
@@ -898,6 +899,7 @@ Bug is in \`target-app/utils.py\`.&#34; \
 ● Run resolver agent    &lt;- agent is working here
 </code></pre>
 <p>The &#34;Comment on issue&#34; step posts a message to the issue: &#34;Agent is working on this. A PR will appear here when the fix is ready.&#34;</p>
+<p class="image-container"><img alt="Resolver agent streaming output in GitHub Actions" src="img/b02c1f1929b9a186.png"></p>
 <h2 is-upgraded>What the agent does</h2>
 <p>While the workflow is running, the resolver agent is executing inside a hosted sandbox, following the SKILL.md playbook you wrote:</p>
 <ol type="1">
@@ -1076,7 +1078,9 @@ gh pr list --repo &#34;$REPO&#34;
 <p>When the CD agent completes, check the linked issue is closed:</p>
 <pre><code language="language-bash" class="language-bash">gh issue list --state closed --repo &#34;$REPO&#34;
 </code></pre>
+<p class="image-container"><img alt="CD agent streaming output in GitHub Actions" src="img/b89a9d5f85d05e64.png"></p>
 <p>Verify the fix is live in your browser: the track filter should now work.</p>
+<p class="image-container"><img alt="Fixed app: track filter returns matching sessions" src="img/abe624787cf5ef35.png"></p>
 <aside class="warning"><p><strong>If the CD agent times out</strong>: This is rare but can happen if Cloud Build takes longer than expected. Re-trigger by re-merging the PR or running <code>uv run python starter/cd-agent/deploy.py <pr_url> <image_url></code> locally.</p>
 </aside>
 

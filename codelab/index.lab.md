@@ -932,6 +932,8 @@ Service URL: https://target-app-xxxx.us-central1.run.app
 Open the URL in your browser. Click any track filter: notice the session list goes empty. That is the first
 of four seeded bugs the agent will fix.
 
+![Broken app: track filter returns no sessions](img/broken-app.png)
+
 > aside negative
 >
 > **`--allow-unauthenticated` is intentional here.** It makes the app publicly accessible for demo purposes.
@@ -1137,6 +1139,8 @@ You'll see the GitHub Actions run progress through these steps:
 
 The "Comment on issue" step posts a message to the issue: "Agent is working on this. A PR will appear here
 when the fix is ready."
+
+![Resolver agent streaming output in GitHub Actions](img/resolve-agent.png)
 
 ### What the agent does
 
@@ -1371,7 +1375,11 @@ When the CD agent completes, check the linked issue is closed:
 gh issue list --state closed --repo "$REPO"
 ```
 
+![CD agent streaming output in GitHub Actions](img/cd-agent.png)
+
 Verify the fix is live in your browser: the track filter should now work.
+
+![Fixed app: track filter returns matching sessions](img/fixed-app.png)
 
 > aside negative
 >
