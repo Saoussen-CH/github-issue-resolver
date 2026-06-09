@@ -245,7 +245,7 @@ gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34;
         <p>Before writing any code, let&#39;s understand the platform you are building on.</p>
 <p>Most LLM APIs give you text-in, text-out: you send a prompt, the model returns a response. That is enough for summarization or Q&amp;A. It is not enough for resolving a GitHub issue - the agent needs to clone a repo, run tests, write files, and open a PR. For that, the model needs real compute.</p>
 <p>The <strong>Managed Agents API</strong> (part of Gemini Enterprise Agent Platform) runs a Gemini model inside a fully provisioned Ubuntu sandbox. The model and the compute environment are co-located: the model can run <code>bash</code>, execute Python, call <code>git</code>, run <code>pytest</code>, and make HTTP requests as part of a single interaction.</p>
-<pre><code>Your code (GitHub Actions workflow)
+<pre><code language="language-text" class="language-text">Your code (GitHub Actions workflow)
         │
         │  client.interactions.create(agent=&#34;managed-issue-resolver&#34;, ...)
         ▼
@@ -388,10 +388,8 @@ gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -&gt; /.agent/skills/fi
 </td><td colspan="1" rowspan="1"><p>Fail-safe against silent partial fixes</p>
 </td></tr>
 </table>
-<p>Replace the <code># TODO</code> comment with:</p>
-<pre><code language="language-markdown" class="language-markdown">## Rules
-
-- Never create new files to apply a fix. Edit the file that contains the bug.
+<p>Replace the <code><!-- TODO --></code> comment with:</p>
+<pre><code language="language-markdown" class="language-markdown">- Never create new files to apply a fix. Edit the file that contains the bug.
 - Never fix a symptom when you can fix the root cause.
 - If tests pass before your change, they must all pass after it too.
 - Do not add comments unless the fix is genuinely non-obvious.
@@ -405,38 +403,39 @@ gs://{BUCKET}/resolver/agent-home/skills/fix-issue/      -&gt; /.agent/skills/fi
 <p>You&#39;ll see two <code># TODO</code> comment blocks: one for <code>## Workflow</code> and one for <code>## Critical rules</code>. The trigger and tools sections at the top are already filled in.</p>
 <h2 is-upgraded>TODO - Add the Workflow and Critical Rules</h2>
 <p>The workflow gives the agent a step-by-step runbook for this class of task. Steps 1-3 are orientation before action: the agent must understand the codebase before it touches anything. Step 4 establishes a failure baseline so the agent verifies its fix addresses exactly the right behavior. Step 8 includes the <code>git config</code> lines that are critical: the managed sandbox starts with no git identity configured, and <code>git commit</code> fails without them.</p>
-<p>Replace the <code>## Workflow</code> comment block with:</p>
-<pre><code language="language-markdown" class="language-markdown">## Workflow
-
-1. Read the issue using the GitHub MCP server to get the title, body, and number.
+<p>Replace the <code><!-- TODO --></code> comment inside <code>## Workflow</code> with:</p>
+<pre><code language="language-markdown" class="language-markdown">1. Read the issue using the GitHub MCP server to get the title, body, and number.
 
 2. Clone the repository and read its structure:
    ```bash
    git clone &lt;auth_repo_url&gt; /workspace/repo
    cd /workspace/repo &amp;&amp; ls -la
-</code></pre>
-<ol type="1" start="3">
-<li>Install dependencies (check for <code>requirements.txt</code>, <code>package.json</code>, <code>pyproject.toml</code>).</li>
-<li>Run the existing tests to see the current failure baseline.</li>
-<li>Diagnose the issue using the symptom-to-location playbook.</li>
-<li>Write the fix. Change only the code that causes the reported behavior.</li>
-<li>Run the tests again. If any fail, iterate. Do not open a PR until all pass.</li>
-<li>Commit and push:<pre><code language="language-bash" class="language-bash">git config user.email &#34;agent@managed-agents.dev&#34;
-git config user.name &#34;Issue Resolver Agent&#34;
-git checkout -b fix/issue-&lt;ISSUE_NUMBER&gt;
-git add -A
-git commit -m &#34;fix: &lt;description&gt; (closes #&lt;ISSUE_NUMBER&gt;)&#34;
-git push origin fix/issue-&lt;ISSUE_NUMBER&gt;
-</code></pre>
-</li>
-<li>Open a PR via GitHub MCP. Post a comment on the issue with the PR URL.</li>
-</ol>
-<pre><code>Replace the `## Critical rules` comment block with:
+   ```
 
-```markdown
-## Critical rules
+3. Install dependencies (check for `requirements.txt`, `package.json`, `pyproject.toml`).
 
-- **MANDATORY: run the full test suite before opening a PR.**
+4. Run the existing tests to see the current failure baseline.
+
+5. Diagnose the issue using the symptom-to-location playbook.
+
+6. Write the fix. Change only the code that causes the reported behavior.
+
+7. Run the tests again. If any fail, iterate. Do not open a PR until all pass.
+
+8. Commit and push:
+   ```bash
+   git config user.email &#34;agent@managed-agents.dev&#34;
+   git config user.name &#34;Issue Resolver Agent&#34;
+   git checkout -b fix/issue-&lt;ISSUE_NUMBER&gt;
+   git add -A
+   git commit -m &#34;fix: &lt;description&gt; (closes #&lt;ISSUE_NUMBER&gt;)&#34;
+   git push origin fix/issue-&lt;ISSUE_NUMBER&gt;
+   ```
+
+9. Open a PR via GitHub MCP. Post a comment on the issue with the PR URL.
+</code></pre>
+<p>Replace the <code><!-- TODO --></code> comment inside <code>## Critical rules</code> with:</p>
+<pre><code language="language-markdown" class="language-markdown">- **MANDATORY: run the full test suite before opening a PR.**
 - **Do NOT create new files to apply a fix.**
 - **Do NOT open a PR if any tests fail.** Iterate until they pass.
 </code></pre>
@@ -820,10 +819,8 @@ Bug is in \`target-app/utils.py\`.&#34; \
 </code></pre>
 <p>The persona and 6-step high-level workflow are pre-filled. You&#39;ll see a <code># TODO</code> comment for the <code>## Rules</code> section.</p>
 <h2 is-upgraded>TODO - Add the CD Rules</h2>
-<p>Replace the <code># TODO</code> comment with:</p>
-<pre><code language="language-markdown" class="language-markdown">## Rules
-
-- Always record the stable revision before deploying. Rollback is impossible without it.
+<p>Replace the <code><!-- TODO --></code> comment with:</p>
+<pre><code language="language-markdown" class="language-markdown">- Always record the stable revision before deploying. Rollback is impossible without it.
 - Never use `gcloud logging read` for health decisions. Use Cloud Monitoring MCP for metrics.
 - Never close the issue on rollback. The fix did not reach production.
 - If no linked issue is found in the PR body, skip the GitHub steps entirely.
@@ -864,77 +861,83 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <p>The trigger and tools sections are pre-filled. You&#39;ll see two <code># TODO</code> comment blocks: one for <code>## Steps</code> and one for <code>## Critical rules</code>.</p>
 <h2 is-upgraded>TODO - Add the Steps and Critical Rules</h2>
 <p>The 12-step workflow covers: authenticate, record stable revision, deploy with <code>--no-traffic</code>, get new revision name, split traffic at 10%, run the monitoring loop with the verdict table, promote or roll back, get the service URL, extract the issue number from the PR body, and post the result.</p>
-<p>Replace the <code>## Steps</code> comment block with:</p>
-<pre><code language="language-markdown" class="language-markdown">## Steps
-
-1. **Authenticate gcloud** using the access token from the prompt:
+<p>Replace the <code><!-- TODO --></code> comment inside <code>## Steps</code> with:</p>
+<pre><code language="language-markdown" class="language-markdown">1. **Authenticate gcloud** using the access token from the prompt:
    ```bash
    export CLOUDSDK_AUTH_ACCESS_TOKEN=&lt;token_from_prompt&gt;
-</code></pre>
-<ol type="1" start="2">
-<li><strong>Record the stable revision</strong> before any change:<pre><code language="language-bash" class="language-bash">gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-  --format=&#34;value(REVISION)&#34; --limit=1
-</code></pre>
-Save this as STABLE_REV. This is the rollback target.</li>
-<li><strong>Deploy the new image with no traffic</strong>:<pre><code language="language-bash" class="language-bash">gcloud run deploy &lt;SERVICE&gt; \
-  --image &lt;IMAGE_URL&gt; \
-  --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-  --no-traffic --quiet
-</code></pre>
-</li>
-<li><strong>Get the new revision name</strong>:<pre><code language="language-bash" class="language-bash">gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-  --format=&#34;value(REVISION)&#34; --limit=1
-</code></pre>
-Save this as NEW_REV.</li>
-<li><strong>Split traffic at 10%</strong>:<pre><code language="language-bash" class="language-bash">gcloud run services update-traffic &lt;SERVICE&gt; \
-  --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-  --to-revisions NEW_REV=10,STABLE_REV=90
-</code></pre>
-</li>
-<li><strong>Monitoring loop</strong> - run 5 checks, 60 seconds apart, using Cloud Monitoring MCP:<ul>
-<li>Query <code>run.googleapis.com/request_count</code> for the last 2 minutes, grouped by <code>response_code_class</code></li>
-<li>Compute canary_error_rate and stable_error_rate from 5xx vs total</li>
-<li>Apply the verdict table:</li>
-</ul>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Condition</p>
-</td><td colspan="1" rowspan="1"><p>Verdict</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>canary_total &lt; 5</p>
-</td><td colspan="1" rowspan="1"><p>HOLD</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>canary_error_rate &gt; 0.05 AND &gt; stable_error_rate * 2</p>
-</td><td colspan="1" rowspan="1"><p>ROLLBACK</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>canary_error_rate &lt;= 0.05</p>
-</td><td colspan="1" rowspan="1"><p>OK</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Two consecutive HOLDs</p>
-</td><td colspan="1" rowspan="1"><p>ROLLBACK</p>
-</td></tr>
-</table>
-Stop immediately on ROLLBACK. Proceed to step 7 after all 5 checks pass as OK.</li>
-<li><strong>Promote</strong> (all checks OK):<pre><code language="language-bash" class="language-bash">gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; --to-latest
-</code></pre>
-<strong>Or rollback</strong> (any ROLLBACK verdict):<pre><code language="language-bash" class="language-bash">gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-  --to-revisions STABLE_REV=100
-</code></pre>
-</li>
-<li><strong>Get the service URL</strong>:<pre><code language="language-bash" class="language-bash">gcloud run services describe &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
-  --format=&#34;value(status.url)&#34;
-</code></pre>
-</li>
-<li><strong>Find the linked issue number</strong> from the PR body: look for &#34;Closes #N&#34; or &#34;Fixes #N&#34;.</li>
-<li><strong>On success</strong>: post a comment on the issue with the revision name and live URL, then close the issue via GitHub MCP.</li>
-<li><strong>On rollback</strong>: use Cloud Logging MCP to fetch the top 5 recent error log entries for the service. Post a comment on the issue with the error rate, rollback reason, and log entries. Do NOT close the issue.</li>
-<li>If no linked issue is found, skip GitHub steps - the deployment result is complete.</li>
-</ol>
-<pre><code>Replace the `## Critical rules` comment block with:
+   ```
 
-```markdown
-## Critical rules
+2. **Record the stable revision** before any change:
+   ```bash
+   gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --format=&#34;value(REVISION)&#34; --limit=1
+   ```
+   Save this as STABLE_REV. This is the rollback target.
 
-- **Always record STABLE_REV before step 3.** Rollback is impossible without it.
+3. **Deploy the new image with no traffic**:
+   ```bash
+   gcloud run deploy &lt;SERVICE&gt; \
+     --image &lt;IMAGE_URL&gt; \
+     --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --no-traffic --quiet
+   ```
+
+4. **Get the new revision name**:
+   ```bash
+   gcloud run revisions list --service &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --format=&#34;value(REVISION)&#34; --limit=1
+   ```
+   Save this as NEW_REV.
+
+5. **Split traffic at 10%**:
+   ```bash
+   gcloud run services update-traffic &lt;SERVICE&gt; \
+     --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --to-revisions NEW_REV=10,STABLE_REV=90
+   ```
+
+6. **Monitoring loop** - run 5 checks, 60 seconds apart, using Cloud Monitoring MCP:
+   - Query `run.googleapis.com/request_count` for the last 2 minutes, grouped by `response_code_class`
+   - Compute canary_error_rate and stable_error_rate from 5xx vs total
+   - Apply the verdict table:
+
+   | Condition | Verdict |
+   |---|---|
+   | canary_total &lt; 5 | HOLD |
+   | canary_error_rate &gt; 0.05 AND &gt; stable_error_rate * 2 | ROLLBACK |
+   | canary_error_rate &lt;= 0.05 | OK |
+   | Two consecutive HOLDs | ROLLBACK |
+
+   Stop immediately on ROLLBACK. Proceed to step 7 after all 5 checks pass as OK.
+
+7. **Promote** (all checks OK):
+   ```bash
+   gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; --to-latest
+   ```
+
+   **Or rollback** (any ROLLBACK verdict):
+   ```bash
+   gcloud run services update-traffic &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --to-revisions STABLE_REV=100
+   ```
+
+8. **Get the service URL**:
+   ```bash
+   gcloud run services describe &lt;SERVICE&gt; --region &lt;REGION&gt; --project &lt;PROJECT&gt; \
+     --format=&#34;value(status.url)&#34;
+   ```
+
+9. **Find the linked issue number** from the PR body: look for &#34;Closes #N&#34; or &#34;Fixes #N&#34;.
+
+10. **On success**: post a comment on the issue with the revision name and live URL, then close the issue via GitHub MCP.
+
+11. **On rollback**: use Cloud Logging MCP to fetch the top 5 recent error log entries for the service.
+    Post a comment on the issue with the error rate, rollback reason, and log entries. Do NOT close the issue.
+
+12. If no linked issue is found, skip GitHub steps - the deployment result is complete.
+</code></pre>
+<p>Replace the <code><!-- TODO --></code> comment inside <code>## Critical rules</code> with:</p>
+<pre><code language="language-markdown" class="language-markdown">- **Always record STABLE_REV before step 3.** Rollback is impossible without it.
 - **Never use Cloud Logging for the promote/rollback decision.** Use Cloud Monitoring MCP only.
 - **Never close the issue on rollback.** The fix did not reach production.
 </code></pre>

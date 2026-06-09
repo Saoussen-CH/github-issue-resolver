@@ -333,7 +333,7 @@ The **Managed Agents API** (part of Gemini Enterprise Agent Platform) runs a Gem
 provisioned Ubuntu sandbox. The model and the compute environment are co-located: the model can run `bash`,
 execute Python, call `git`, run `pytest`, and make HTTP requests as part of a single interaction.
 
-```
+```text
 Your code (GitHub Actions workflow)
         │
         │  client.interactions.create(agent="managed-issue-resolver", ...)
@@ -461,11 +461,9 @@ Each rule maps to one real failure mode:
 | Do not refactor anything unrelated to the issue | One PR, one fix - clean and reviewable history |
 | If you cannot locate the bug, describe what you found and stop | Fail-safe against silent partial fixes |
 
-Replace the `# TODO` comment with:
+Replace the `<!-- TODO -->` comment with:
 
 ```markdown
-## Rules
-
 - Never create new files to apply a fix. Edit the file that contains the bug.
 - Never fix a symptom when you can fix the root cause.
 - If tests pass before your change, they must all pass after it too.
@@ -493,11 +491,9 @@ baseline so the agent verifies its fix addresses exactly the right behavior. Ste
 lines that are critical: the managed sandbox starts with no git identity configured, and `git commit` fails
 without them.
 
-Replace the `## Workflow` comment block with:
+Replace the `<!-- TODO -->` comment inside `## Workflow` with:
 
-```markdown
-## Workflow
-
+````markdown
 1. Read the issue using the GitHub MCP server to get the title, body, and number.
 
 2. Clone the repository and read its structure:
@@ -527,13 +523,11 @@ Replace the `## Workflow` comment block with:
    ```
 
 9. Open a PR via GitHub MCP. Post a comment on the issue with the PR URL.
-```
+````
 
-Replace the `## Critical rules` comment block with:
+Replace the `<!-- TODO -->` comment inside `## Critical rules` with:
 
 ```markdown
-## Critical rules
-
 - **MANDATORY: run the full test suite before opening a PR.**
 - **Do NOT create new files to apply a fix.**
 - **Do NOT open a PR if any tests fail.** Iterate until they pass.
@@ -1055,11 +1049,9 @@ section.
 
 ### TODO - Add the CD Rules
 
-Replace the `# TODO` comment with:
+Replace the `<!-- TODO -->` comment with:
 
 ```markdown
-## Rules
-
 - Always record the stable revision before deploying. Rollback is impossible without it.
 - Never use `gcloud logging read` for health decisions. Use Cloud Monitoring MCP for metrics.
 - Never close the issue on rollback. The fix did not reach production.
@@ -1110,11 +1102,9 @@ The 12-step workflow covers: authenticate, record stable revision, deploy with `
 revision name, split traffic at 10%, run the monitoring loop with the verdict table, promote or roll back,
 get the service URL, extract the issue number from the PR body, and post the result.
 
-Replace the `## Steps` comment block with:
+Replace the `<!-- TODO -->` comment inside `## Steps` with:
 
-```markdown
-## Steps
-
+````markdown
 1. **Authenticate gcloud** using the access token from the prompt:
    ```bash
    export CLOUDSDK_AUTH_ACCESS_TOKEN=<token_from_prompt>
@@ -1188,13 +1178,11 @@ Replace the `## Steps` comment block with:
     Post a comment on the issue with the error rate, rollback reason, and log entries. Do NOT close the issue.
 
 12. If no linked issue is found, skip GitHub steps - the deployment result is complete.
-```
+````
 
-Replace the `## Critical rules` comment block with:
+Replace the `<!-- TODO -->` comment inside `## Critical rules` with:
 
 ```markdown
-## Critical rules
-
 - **Always record STABLE_REV before step 3.** Rollback is impossible without it.
 - **Never use Cloud Logging for the promote/rollback decision.** Use Cloud Monitoring MCP only.
 - **Never close the issue on rollback.** The fix did not reach production.
