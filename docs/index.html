@@ -46,44 +46,7 @@
 <p>Label any issue <code>ai-resolve</code>. A managed agent reads the issue via GitHub MCP, clones the repo, reproduces the failure, fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, then promotes or rolls back automatically.</p>
 <p>No orchestration framework. No LLM wrappers. No custom sandboxes. The platform provisions the sandbox, runs the model, executes code, and streams results. You bring two AGENTS.md files, two SKILL.md files, two Python scripts, and three hosted MCP servers.</p>
 <h2 is-upgraded>What you&#39;ll build</h2>
-<pre><code language="language-mermaid" class="language-mermaid">flowchart TD
-    A([Issue labeled ai-resolve]) --&gt; B
-
-    subgraph GHA1[&#34;GitHub Actions: resolve.yml&#34;]
-        B[Run resolve.py]
-    end
-
-    subgraph RA[&#34;Resolver Agent - Gemini Enterprise Agent Platform&#34;]
-        RA_H((Antigravity\nharness))
-        RA_H --&gt;|read issue · open PR| RA_GH[GitHub MCP]
-        RA_H --&gt;|clone · test · fix · verify| RA_EXEC[code_execution]
-    end
-
-    B --&gt; RA_H
-    RA_GH --&gt; I([Human reviews and merges PR])
-    I --&gt; J
-
-    subgraph GHA2[&#34;GitHub Actions: deploy.yml&#34;]
-        J[Cloud Build: build and push image]
-        J --&gt; K[Run deploy.py]
-    end
-
-    subgraph CDA[&#34;CD Agent - Gemini Enterprise Agent Platform&#34;]
-        CD_H((Antigravity\nharness))
-        CD_H --&gt;|deploy --no-traffic · split 10%| CD_EXEC[code_execution · gcloud]
-        CD_H --&gt;|5 checks · 60s apart| CD_MON[Cloud Monitoring MCP]
-        CD_MON --&gt; CD_V{promote or\nrollback?}
-        CD_V --&gt;|all checks OK| CD_P[code_execution · --to-latest]
-        CD_V --&gt;|error rate too high| CD_R[code_execution · restore stable]
-        CD_P --&gt; CD_GH[GitHub MCP · close issue]
-        CD_R --&gt; CD_LOG[Cloud Logging MCP · fetch errors]
-        CD_LOG --&gt; CD_GH2[GitHub MCP · post comment]
-    end
-
-    K --&gt; CD_H
-    CD_GH --&gt; R([Issue closed with live URL])
-    CD_GH2 --&gt; S([Issue stays open for investigation])
-</code></pre>
+<p class="image-container"><img alt="Architecture diagram" src="img/4912f096c8a857e0.png"></p>
 <h2 is-upgraded>The app you&#39;ll fix</h2>
 <p>A conference session browser showing 12 sessions across 5 tracks (AI &amp; ML, Cloud, Mobile, Web, Security) over 2 days. The app has four seeded bugs, all in <code>utils.py</code>:</p>
 <table>

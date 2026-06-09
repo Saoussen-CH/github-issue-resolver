@@ -38,45 +38,7 @@ and three hosted MCP servers.
 
 ### What you'll build
 
-```mermaid
-flowchart TD
-    A([Issue labeled ai-resolve]) --> B
-
-    subgraph GHA1["GitHub Actions: resolve.yml"]
-        B[Run resolve.py]
-    end
-
-    subgraph RA["Resolver Agent - Gemini Enterprise Agent Platform"]
-        RA_H((Antigravity\nharness))
-        RA_H -->|read issue · open PR| RA_GH[GitHub MCP]
-        RA_H -->|clone · test · fix · verify| RA_EXEC[code_execution]
-    end
-
-    B --> RA_H
-    RA_GH --> I([Human reviews and merges PR])
-    I --> J
-
-    subgraph GHA2["GitHub Actions: deploy.yml"]
-        J[Cloud Build: build and push image]
-        J --> K[Run deploy.py]
-    end
-
-    subgraph CDA["CD Agent - Gemini Enterprise Agent Platform"]
-        CD_H((Antigravity\nharness))
-        CD_H -->|deploy --no-traffic · split 10%| CD_EXEC[code_execution · gcloud]
-        CD_H -->|5 checks · 60s apart| CD_MON[Cloud Monitoring MCP]
-        CD_MON --> CD_V{promote or\nrollback?}
-        CD_V -->|all checks OK| CD_P[code_execution · --to-latest]
-        CD_V -->|error rate too high| CD_R[code_execution · restore stable]
-        CD_P --> CD_GH[GitHub MCP · close issue]
-        CD_R --> CD_LOG[Cloud Logging MCP · fetch errors]
-        CD_LOG --> CD_GH2[GitHub MCP · post comment]
-    end
-
-    K --> CD_H
-    CD_GH --> R([Issue closed with live URL])
-    CD_GH2 --> S([Issue stays open for investigation])
-```
+![Architecture diagram](img/diagram.png)
 
 ### The app you'll fix
 
