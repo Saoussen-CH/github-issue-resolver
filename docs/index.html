@@ -177,14 +177,19 @@ echo &#34;Project: $PROJECT_ID&#34;
 <aside class="special"><p><strong>Why these APIs? </strong><code>aiplatform.googleapis.com</code> is the Managed Agents API. The rest support Cloud Run deployment (<code>run</code>, <code>cloudbuild</code>, <code>artifactregistry</code>), skill file storage (<code>storage</code>), and the hosted MCP servers for monitoring and logging.</p>
 </aside>
 <h2 is-upgraded>Fill in .env</h2>
+<p>Both placeholder values contain <code>your-project-id</code>, so one <code>sed</code> command fills them both using the <code>PROJECT_ID</code> variable you set above:</p>
 <pre><code language="language-bash" class="language-bash">cp .env.example .env
+sed -i &#34;s/your-project-id/$PROJECT_ID/g&#34; .env
 </code></pre>
-<p>Edit <code>.env</code> and replace the two placeholder values:</p>
-<pre><code>GOOGLE_CLOUD_PROJECT=your-project-id
-GCS_SKILLS_BUCKET=managed-issue-resolver-skills-your-project-id
+<p>Verify:</p>
+<pre><code language="language-bash" class="language-bash">cat .env
 </code></pre>
-<aside class="warning"><p><strong>Pick a globally unique bucket name.</strong> GCS bucket names are global, so <code>my-bucket</code> will likely be taken. A safe pattern: <code>managed-issue-resolver-skills-{PROJECT_ID}</code>.</p>
-</aside>
+<p>Expected output:</p>
+<pre><code language="language-text" class="language-text">GOOGLE_CLOUD_PROJECT=my-project-123
+GCS_SKILLS_BUCKET=managed-issue-resolver-skills-my-project-123
+CLOUD_RUN_REGION=us-central1
+CLOUD_RUN_SERVICE=target-app
+</code></pre>
 <p>Install Python dependencies:</p>
 <pre><code language="language-bash" class="language-bash">uv sync
 </code></pre>

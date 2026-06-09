@@ -217,21 +217,26 @@ This takes about 1 minute. You'll see `Operation finished successfully` when don
 
 ### Fill in .env
 
+Both placeholder values contain `your-project-id`, so one `sed` command fills them both using the `PROJECT_ID` variable you set above:
+
 ```bash
 cp .env.example .env
+sed -i "s/your-project-id/$PROJECT_ID/g" .env
 ```
 
-Edit `.env` and replace the two placeholder values:
+Verify:
 
-```
-GOOGLE_CLOUD_PROJECT=your-project-id
-GCS_SKILLS_BUCKET=managed-issue-resolver-skills-your-project-id
+```bash
+cat .env
 ```
 
-> aside negative
->
-> **Pick a globally unique bucket name.** GCS bucket names are global, so `my-bucket` will likely be taken.
-> A safe pattern: `managed-issue-resolver-skills-{PROJECT_ID}`.
+Expected output:
+```text
+GOOGLE_CLOUD_PROJECT=my-project-123
+GCS_SKILLS_BUCKET=managed-issue-resolver-skills-my-project-123
+CLOUD_RUN_REGION=us-central1
+CLOUD_RUN_SERVICE=target-app
+```
 
 Install Python dependencies:
 
