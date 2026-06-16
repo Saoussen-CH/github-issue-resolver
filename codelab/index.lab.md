@@ -82,7 +82,7 @@ To open Cloud Shell, click the terminal icon in the top-right toolbar of the GCP
 This codelab uses a GitHub template repository. You get your own ready-to-run copy with one click — no branch
 gymnastics required.
 
-1. Go to [github.com/Saoussen-CH/managed-issue-resolver](https://github.com/Saoussen-CH/managed-issue-resolver)
+1. Go to [github.com/Saoussen-CH/github-issue-resolver](https://github.com/Saoussen-CH/github-issue-resolver)
 2. Click **Use this template** → **Create a new repository**
 3. Name it `github-issue-resolver`, select **Public**, click **Create repository**
 
@@ -282,7 +282,7 @@ Create an Artifact Registry repository for Docker images:
 ```bash
 PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
 
-gcloud artifacts repositories create github-issue-resolver \
+gcloud artifacts repositories create managed-issue-resolver \
   --repository-format=docker \
   --location=us-central1 \
   --project=$PROJECT_ID
@@ -891,7 +891,7 @@ uv run python starter/setup/create_agents.py
 The script prints the `gh secret set` commands for both agent IDs. Run them:
 
 ```bash
-REPO=$(gh api user --jq '.login')/managed-issue-resolver
+REPO=$(gh api user --jq '.login')/github-issue-resolver
 gh secret set RESOLVER_AGENT_ID --body "managed-issue-resolver" --repo "$REPO"
 gh secret set CD_AGENT_ID --body "managed-issue-cd" --repo "$REPO"
 ```
@@ -1093,7 +1093,7 @@ the agent work.
 ### Create the `ai-resolve` label
 
 ```bash
-REPO=$(gh api user --jq '.login')/managed-issue-resolver
+REPO=$(gh api user --jq '.login')/github-issue-resolver
 gh label create ai-resolve --color "0075ca" --description "Trigger AI issue resolution" --repo "$REPO"
 ```
 
@@ -1307,7 +1307,7 @@ agent deploy the fix.
 When the resolver agent's workflow completes, check the open PRs:
 
 ```bash
-REPO=$(gh api user --jq '.login')/managed-issue-resolver
+REPO=$(gh api user --jq '.login')/github-issue-resolver
 gh pr list --repo "$REPO"
 ```
 
@@ -1427,7 +1427,7 @@ exists.
 To also delete your GitHub repository:
 
 ```bash
-REPO=$(gh api user --jq '.login')/managed-issue-resolver
+REPO=$(gh api user --jq '.login')/github-issue-resolver
 gh repo delete "$REPO" --yes
 ```
 
