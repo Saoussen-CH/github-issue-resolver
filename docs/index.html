@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
   <meta name="theme-color" content="#4F7DC9">
   <meta charset="UTF-8">
-  <title>Autonomous GitHub Issue Resolution with the Google Managed Agents API</title>
+  <title>Build a GitHub Issue Resolver with Managed Agents in the Gemini API</title>
   <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
   <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
   <link rel="stylesheet" href="https://storage.googleapis.com/claat-public/codelab-elements.css">
@@ -24,7 +24,7 @@
   <google-codelab codelab-gaid="UA-52746336-1"
                   codelab-ga4id=""
                   id="managed-agents-issue-resolver"
-                  title="Autonomous GitHub Issue Resolution with the Google Managed Agents API"
+                  title="Build a GitHub Issue Resolver with Managed Agents in the Gemini API"
                   environment="web"
                   feedback-link="https://github.com/googlecodelabs/feedback/issues/new?title=[managed-agents-issue-resolver]">
     
@@ -34,7 +34,7 @@
           <hr style="border:none;border-top:1px solid #dadce0;margin:0 0 16px 0;">
           <div style="display:flex;align-items:center;margin-bottom:12px;color:#5f6368;font-size:14px;">
             <svg style="margin-right:12px;flex-shrink:0;" xmlns="http://www.w3.org/2000/svg" height="20" width="20" viewBox="0 0 24 24" fill="#5f6368"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
-            <span>Last updated Jun 09, 2026</span>
+            <span>Last updated Jun 16, 2026</span>
           </div>
           <div style="display:flex;align-items:center;color:#5f6368;font-size:14px;">
             <svg style="margin-right:12px;flex-shrink:0;" xmlns="http://www.w3.org/2000/svg" height="20" width="20" viewBox="0 0 24 24" fill="#5f6368"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
@@ -42,31 +42,9 @@
           </div>
         </div>
 
-        <p>In this codelab you will build <strong>Managed Issue Resolver</strong>: a system that autonomously resolves GitHub issues and deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Gemini Enterprise Agent Platform.</p>
+        <p>In this codelab you will build a <strong>GitHub Issue Resolver</strong>: a system that autonomously resolves GitHub issues and deploys fixes to Cloud Run, driven entirely by the Managed Agents API on Gemini Enterprise Agent Platform.</p>
 <p>Label any issue <code>ai-resolve</code>. A managed agent reads the issue via GitHub MCP, clones the repo, reproduces the failure, fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second managed agent deploys the fix to Cloud Run using canary traffic splitting, monitors error rates via Cloud Monitoring MCP, then promotes or rolls back automatically.</p>
 <p>No orchestration framework. No LLM wrappers. No custom sandboxes. The platform provisions the sandbox, runs the model, executes code, and streams results. You bring two AGENTS.md files, two SKILL.md files, two Python scripts, and three hosted MCP servers.</p>
-<h2 is-upgraded>What you&#39;ll build</h2>
-<p class="image-container"><img alt="Architecture diagram" src="img/4912f096c8a857e0.png"></p>
-<h2 is-upgraded>The app you&#39;ll fix</h2>
-<p>A conference session browser showing 12 sessions across 5 tracks (AI &amp; ML, Cloud, Mobile, Web, Security) over 2 days. The app has four seeded bugs, all in <code>utils.py</code>:</p>
-<table>
-<tr><td colspan="1" rowspan="1"><p>Bug</p>
-</td><td colspan="1" rowspan="1"><p>Symptom</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Filter by track</p>
-</td><td colspan="1" rowspan="1"><p>Clicking any track filter returns an empty list</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Filter by day</p>
-</td><td colspan="1" rowspan="1"><p>Filtering by Day 1 or Day 2 returns nothing</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Speaker search</p>
-</td><td colspan="1" rowspan="1"><p>&#34;eric&#34; does not match &#34;Eric Schmidt&#34; (case-sensitive)</p>
-</td></tr>
-<tr><td colspan="1" rowspan="1"><p>Session count</p>
-</td><td colspan="1" rowspan="1"><p>The count badge shows the wrong number</p>
-</td></tr>
-</table>
-<p>The agent reads the issue, finds the root cause, fixes the code, and opens a PR. You review and merge it. The CD agent deploys the fix automatically.</p>
 <h2 class="checklist" is-upgraded>What you&#39;ll learn</h2>
 <ul class="checklist">
 <li>Write <strong>AGENTS.md</strong> (agent identity and constraints) and <strong>SKILL.md</strong> (step-by-step playbook), and understand why they are separate files owned by different teams.</li>
@@ -91,27 +69,25 @@
 <h2 is-upgraded>What is Cloud Shell?</h2>
 <p>Cloud Shell is a free browser-based Linux terminal with <code>gcloud</code>, <code>git</code>, <code>gh</code>, <code>uv</code>, and Python pre-installed. You don&#39;t need to install anything locally to complete this codelab.</p>
 <p>To open Cloud Shell, click the terminal icon in the top-right toolbar of the GCP Console. When prompted, click <strong>Authorize</strong> to allow Cloud Shell to make Google Cloud API calls.</p>
-<aside class="warning"><p><strong>If Cloud Shell goes idle for 20 minutes it will disconnect.</strong> Reconnect and <code>cd managed-issue-resolver</code> to return to the working directory.</p>
+<aside class="warning"><p><strong>If Cloud Shell goes idle for 20 minutes it will disconnect.</strong> Reconnect and <code>cd github-issue-resolver</code> to return to the working directory.</p>
 </aside>
 <aside class="special"><p><strong>Prefer your local terminal?</strong> You&#39;ll need <code>gcloud</code> CLI, <code>gh</code> CLI, <code>uv</code>, and Python 3.11+ installed. Everything else in this codelab runs identically.</p>
 </aside>
-<h2 is-upgraded>Clone the repository</h2>
-<p>The workshop materials and starter files live on the <code>codelab-workshop</code> branch. Clone that branch and create a local <code>master</code> branch from it - your GitHub repo will use <code>master</code> as its default so the GitHub Actions workflows trigger correctly:</p>
-<pre><code language="language-bash" class="language-bash">git clone --branch codelab-workshop https://github.com/Saoussen-CH/managed-issue-resolver.git
-cd managed-issue-resolver
-git checkout -b master
-</code></pre>
-<aside class="special"><p><strong>Why </strong><strong><code>git checkout -b master</code></strong><strong>?</strong> The <code>deploy.yml</code> workflow triggers on PRs merged to <code>master</code>. Creating a local <code>master</code> branch now means when you push to your own GitHub repo in the next step, <code>master</code> becomes the default branch and all workflows fire as expected.</p>
-</aside>
-<h2 is-upgraded>Create your GitHub repo</h2>
-<p>Push the codelab content to your own GitHub repo so GitHub Actions can run:</p>
-<pre><code language="language-bash" class="language-bash">gh auth login
-git remote remove origin
-gh repo create managed-issue-resolver --public --source=. --remote=origin --push
-REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
-</code></pre>
+<h2 is-upgraded>Create your GitHub repo from the template</h2>
+<p>This codelab uses a GitHub template repository. You get your own ready-to-run copy with one click — no branch gymnastics required.</p>
+<ol type="1">
+<li>Go to <a href="https://github.com/Saoussen-CH/github-issue-resolver" target="_blank">github.com/Saoussen-CH/github-issue-resolver</a></li>
+<li>Click <strong>Use this template</strong> → <strong>Create a new repository</strong></li>
+<li>Name it <code>github-issue-resolver</code>, select <strong>Public</strong>, click <strong>Create repository</strong></li>
+</ol>
 <aside class="special"><p><strong>Why public?</strong> The <code>GITHUB_TOKEN</code> that GitHub Actions provides automatically has <code>contents: write</code> and <code>pull-requests: write</code> permissions by default on public repos. Private repos require additional configuration.</p>
 </aside>
+<h2 is-upgraded>Clone your repo</h2>
+<pre><code language="language-bash" class="language-bash">gh auth login
+REPO=$(gh api user --jq &#39;.login&#39;)/github-issue-resolver
+git clone https://github.com/$REPO.git
+cd github-issue-resolver
+</code></pre>
 <h2 is-upgraded>Authenticate and configure your project</h2>
 <pre><code language="language-bash" class="language-bash">gcloud auth login
 gcloud auth application-default login
@@ -196,7 +172,7 @@ done
 <h2 is-upgraded>Add GitHub secrets</h2>
 <p>The workflows read secrets from the repository. Add them before the first run:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
-REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
+REPO=$(gh api user --jq &#39;.login&#39;)/github-issue-resolver
 
 gh secret set GCP_SA_KEY --repo &#34;$REPO&#34; &lt; sa-key.json
 gh secret set GCP_PROJECT_ID --body &#34;$PROJECT_ID&#34; --repo &#34;$REPO&#34;
@@ -209,6 +185,66 @@ gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34; --repo &#34;$REPO&#3
 <aside class="warning"><p><strong>Allow pull request creation.</strong> Go to your GitHub repo: <strong>Settings &gt; Actions &gt; General &gt; Workflow permissions</strong>. Check: <strong>Allow GitHub Actions to create and approve pull requests</strong>. Without this, the resolver agent cannot open a PR and the workflow will fail with a <code>403</code> error.</p>
 </aside>
 <p>The secrets <code>RESOLVER_AGENT_ID</code> and <code>CD_AGENT_ID</code> will be added in the next steps after the agents are created.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="The App You&#39;ll Fix" duration="5">
+        <p>Before writing any agent code, deploy the app and see the bugs for yourself.</p>
+<p>The target app is a <strong>conference session browser</strong> — 12 sessions across 5 tracks (AI &amp; ML, Cloud, Mobile, Web, Security) over 2 days. It has four seeded bugs, all in <code>utils.py</code>:</p>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Bug</p>
+</td><td colspan="1" rowspan="1"><p>Symptom</p>
+</td><td colspan="1" rowspan="1"><p>Root cause</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Filter by track</p>
+</td><td colspan="1" rowspan="1"><p>Clicking any track filter returns an empty list</p>
+</td><td colspan="1" rowspan="1"><p>Input normalised to <code>"ai-and-ml"</code> but sessions store <code>"AI & ML"</code></p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Filter by day</p>
+</td><td colspan="1" rowspan="1"><p>Filtering by Day 1 or Day 2 returns nothing</p>
+</td><td colspan="1" rowspan="1"><p>Day param arrives as string <code>"1"</code>, sessions store int <code>1</code></p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Speaker search</p>
+</td><td colspan="1" rowspan="1"><p><code>"eric"</code> does not match <code>"Eric Schmidt"</code></p>
+</td><td colspan="1" rowspan="1"><p>Case-sensitive comparison</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Session count</p>
+</td><td colspan="1" rowspan="1"><p>The count badge shows the wrong number</p>
+</td><td colspan="1" rowspan="1"><p>Counts all sessions instead of the filtered subset</p>
+</td></tr>
+</table>
+<h2 is-upgraded>Deploy the broken app</h2>
+<p>Create an Artifact Registry repository for Docker images:</p>
+<pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+
+gcloud artifacts repositories create managed-issue-resolver \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=$PROJECT_ID
+</code></pre>
+<p>Deploy the initial (broken) version to Cloud Run:</p>
+<pre><code language="language-bash" class="language-bash">gcloud run deploy target-app \
+  --source target-app/ \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --project=$PROJECT_ID
+</code></pre>
+<p>This takes 2-3 minutes. When complete, you&#39;ll see:</p>
+<pre><code language="language-text" class="language-text">Service URL: https://target-app-xxxx.us-central1.run.app
+</code></pre>
+<p>Open the URL in your browser. Click any track filter — notice the session list goes empty. That is bug #1.</p>
+<p class="image-container"><img alt="Broken app: track filter returns no sessions" src="img/75eaf2ec0325c600.png"></p>
+<aside class="warning"><p><strong><code>--allow-unauthenticated</code></strong><strong> is intentional here.</strong> It makes the app publicly accessible for demo purposes. In production, remove this flag and add IAM-based authentication.</p>
+</aside>
+<h2 is-upgraded>What you&#39;ll build to fix it</h2>
+<p class="image-container"><img alt="Architecture diagram" src="img/4912f096c8a857e0.png"></p>
+<p>Two managed agents handle the full lifecycle:</p>
+<ol type="1">
+<li><strong>Resolver agent</strong> — triggered by the <code>ai-resolve</code> label: reads the issue, clones the repo, runs tests, fixes <code>utils.py</code>, and opens a PR.</li>
+<li><strong>CD agent</strong> — triggered when the PR merges: deploys the fix to Cloud Run with canary traffic splitting, monitors error rates via Cloud Monitoring MCP, then promotes or rolls back automatically.</li>
+</ol>
+<p>You review and merge the PR. Everything else is autonomous.</p>
 
 
       </google-codelab-step>
@@ -690,7 +726,7 @@ Note: recreate agents after changing SKILL.md or AGENTS.md files:
 <pre><code language="language-bash" class="language-bash">uv run python starter/setup/create_agents.py
 </code></pre>
 <p>The script prints the <code>gh secret set</code> commands for both agent IDs. Run them:</p>
-<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
+<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/github-issue-resolver
 gh secret set RESOLVER_AGENT_ID --body &#34;managed-issue-resolver&#34; --repo &#34;$REPO&#34;
 gh secret set CD_AGENT_ID --body &#34;managed-issue-cd&#34; --repo &#34;$REPO&#34;
 </code></pre>
@@ -715,34 +751,6 @@ All agents OK. Ready to trigger the workflow.
 <aside class="special"><p><strong>Agent IDs are permanent.</strong> Once created, the agent ID never changes. Re-run <code>upload_skills.sh</code> then recreate the agents only if you change AGENTS.md or SKILL.md files, or delete the agents. The GitHub secrets never need updating once set.</p>
 </aside>
 <aside class="warning"><p><strong>If you see </strong><strong><code>GOOGLE_CLOUD_PROJECT: KeyError</code></strong>, your <code>.env</code> file is not filled in or not being loaded. Check that <code>GOOGLE_CLOUD_PROJECT=your-project-id</code> is set in <code>.env</code> and that you ran the command from the repo root.</p>
-</aside>
-
-
-      </google-codelab-step>
-    
-      <google-codelab-step label="Deploy the Target App" duration="5">
-        <p>The target app is a conference session browser with four seeded bugs. Deploy the broken version to Cloud Run now so the CD agent has a live service to update when the resolver agent&#39;s fix is merged.</p>
-<p>Create an Artifact Registry repository to store the Docker images that Cloud Build will produce:</p>
-<pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
-
-gcloud artifacts repositories create managed-issue-resolver \
-  --repository-format=docker \
-  --location=us-central1 \
-  --project=$PROJECT_ID
-</code></pre>
-<p>Deploy the initial (broken) version of the conference session browser to Cloud Run:</p>
-<pre><code language="language-bash" class="language-bash">gcloud run deploy target-app \
-  --source target-app/ \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --project=$PROJECT_ID
-</code></pre>
-<p>This takes 2-3 minutes. When complete, you&#39;ll see:</p>
-<pre><code language="language-text" class="language-text">Service URL: https://target-app-xxxx.us-central1.run.app
-</code></pre>
-<p>Open the URL in your browser. Click any track filter: notice the session list goes empty. That is the first of four seeded bugs the agent will fix.</p>
-<p class="image-container"><img alt="Broken app: track filter returns no sessions" src="img/75eaf2ec0325c600.png"></p>
-<aside class="warning"><p><strong><code>--allow-unauthenticated</code></strong><strong> is intentional here.</strong> It makes the app publicly accessible for demo purposes. In production, remove this flag and add IAM-based authentication.</p>
 </aside>
 
 
@@ -863,7 +871,7 @@ gcloud artifacts repositories create managed-issue-resolver \
 <p>GitHub Actions checks out your repo when it runs. Push <code>resolve.py</code> now so the workflow uses your completed version:</p>
 <pre><code language="language-bash" class="language-bash">git add starter/resolver/resolve.py
 git commit -m &#34;fill in resolve.py&#34;
-git push origin master
+git push origin main
 </code></pre>
 
 
@@ -872,7 +880,7 @@ git push origin master
       <google-codelab-step label="Trigger Issue Resolution" duration="10">
         <p>The resolver workflow fires when a GitHub issue receives the <code>ai-resolve</code> label. Let&#39;s trigger it and watch the agent work.</p>
 <h2 is-upgraded>Create the <code>ai-resolve</code> label</h2>
-<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
+<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/github-issue-resolver
 gh label create ai-resolve --color &#34;0075ca&#34; --description &#34;Trigger AI issue resolution&#34; --repo &#34;$REPO&#34;
 </code></pre>
 <h2 is-upgraded>Open an issue</h2>
@@ -1026,7 +1034,7 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <p>The CD workflow runs <code>deploy.py</code> from the checked-out repo. Push it before merging the PR:</p>
 <pre><code language="language-bash" class="language-bash">git add starter/cd-agent/deploy.py
 git commit -m &#34;fill in deploy.py&#34;
-git push origin master
+git push origin main
 </code></pre>
 
 
@@ -1036,7 +1044,7 @@ git push origin master
         <p>The resolver agent&#39;s workflow is complete. It has opened a PR. You will review it, merge it, and watch the CD agent deploy the fix.</p>
 <h2 is-upgraded>Review and merge the PR</h2>
 <p>When the resolver agent&#39;s workflow completes, check the open PRs:</p>
-<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
+<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/github-issue-resolver
 gh pr list --repo &#34;$REPO&#34;
 </code></pre>
 <p>You should see one PR from <code>fix/issue-1</code>:</p>
@@ -1097,7 +1105,7 @@ gh pr list --repo &#34;$REPO&#34;
 <li><strong>Waits</strong> for any in-progress CD workflows to finish</li>
 <li><strong>Closes</strong> all open PRs</li>
 <li><strong>Restores </strong><code>target-app/utils.py</code> from <code>setup/utils_broken.py</code> (the canonical broken version)</li>
-<li><strong>Commits and pushes</strong> the reset to master</li>
+<li><strong>Commits and pushes</strong> the reset to main</li>
 <li><strong>Redeploys</strong> the broken app to Cloud Run</li>
 </ol>
 <p>When done:</p>
@@ -1112,7 +1120,7 @@ Open a new issue with the &#39;ai-resolve&#39; label to trigger the agent.
 </code></pre>
 <p>The script deletes: named agents, GCS bucket, Cloud Run service, Artifact Registry repository, service account, GitHub secrets, and the <code>ai-resolve</code> label. Each resource is skipped gracefully if it no longer exists.</p>
 <p>To also delete your GitHub repository:</p>
-<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/managed-issue-resolver
+<pre><code language="language-bash" class="language-bash">REPO=$(gh api user --jq &#39;.login&#39;)/github-issue-resolver
 gh repo delete &#34;$REPO&#34; --yes
 </code></pre>
 
