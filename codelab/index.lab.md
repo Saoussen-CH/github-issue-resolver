@@ -1,6 +1,6 @@
 ---
 id: managed-agents-issue-resolver
-summary: Build a fully autonomous GitHub issue resolver using the Google Managed Agents API. The platform provisions the sandbox, runs the model, and streams results. You bring two AGENTS.md files, two SKILL.md files, and two Python scripts.
+summary: Build a fully autonomous GitHub issue resolver using the Managed Agents API in the Gemini API. The platform provisions the sandbox, runs the model, and streams results. You bring two AGENTS.md files, two SKILL.md files, and two Python scripts.
 status: Draft
 authors: Saoussen Chaabnia
 categories: AI, Google Cloud, Managed Agents
@@ -11,7 +11,7 @@ keywords: docType:Codelab, category:Cloud, product:GeminiEnterpriseAgentPlatform
 
 ---
 
-# Autonomous GitHub Issue Resolution with the Google Managed Agents API
+# Build a GitHub Issue Resolver with Managed Agents in the Gemini API
 
 Enable_GDP_Credits_Banner: True
 
@@ -24,8 +24,8 @@ Enable_GDP_Credits_Banner: True
 
 Duration: 05:00
 
-In this codelab you will build **Managed Issue Resolver**: a system that autonomously resolves GitHub issues and
-deploys fixes to Cloud Run, driven entirely by the Google Managed Agents API on Gemini Enterprise Agent Platform.
+In this codelab you will build a **GitHub Issue Resolver**: a system that autonomously resolves GitHub issues and
+deploys fixes to Cloud Run, driven entirely by the Managed Agents API on Gemini Enterprise Agent Platform.
 
 Label any issue `ai-resolve`. A managed agent reads the issue via GitHub MCP, clones the repo, reproduces the
 failure, fixes the bug, runs the tests, and opens a PR. When you merge the PR, a second managed agent deploys the
@@ -35,25 +35,6 @@ rolls back automatically.
 No orchestration framework. No LLM wrappers. No custom sandboxes. The platform provisions the sandbox, runs the
 model, executes code, and streams results. You bring two AGENTS.md files, two SKILL.md files, two Python scripts,
 and three hosted MCP servers.
-
-### What you'll build
-
-![Architecture diagram](img/diagram.png)
-
-### The app you'll fix
-
-A conference session browser showing 12 sessions across 5 tracks (AI & ML, Cloud, Mobile, Web, Security) over 2 days.
-The app has four seeded bugs, all in `utils.py`:
-
-| Bug | Symptom |
-|---|---|
-| Filter by track | Clicking any track filter returns an empty list |
-| Filter by day | Filtering by Day 1 or Day 2 returns nothing |
-| Speaker search | "eric" does not match "Eric Schmidt" (case-sensitive) |
-| Session count | The count badge shows the wrong number |
-
-The agent reads the issue, finds the root cause, fixes the code, and opens a PR. You review and merge it. The CD
-agent deploys the fix automatically.
 
 ### What you'll learn
 
@@ -88,7 +69,7 @@ To open Cloud Shell, click the terminal icon in the top-right toolbar of the GCP
 
 > aside negative
 >
-> **If Cloud Shell goes idle for 20 minutes it will disconnect.** Reconnect and `cd managed-issue-resolver` to
+> **If Cloud Shell goes idle for 20 minutes it will disconnect.** Reconnect and `cd github-issue-resolver` to
 > return to the working directory.
 
 > aside positive
@@ -96,39 +77,28 @@ To open Cloud Shell, click the terminal icon in the top-right toolbar of the GCP
 > **Prefer your local terminal?** You'll need `gcloud` CLI, `gh` CLI, `uv`, and Python 3.11+ installed.
 > Everything else in this codelab runs identically.
 
-### Clone the repository
+### Create your GitHub repo from the template
 
-The workshop materials and starter files live on the `codelab-workshop` branch. Clone that branch and create a
-local `master` branch from it - your GitHub repo will use `master` as its default so the GitHub Actions
-workflows trigger correctly:
+This codelab uses a GitHub template repository. You get your own ready-to-run copy with one click — no branch
+gymnastics required.
 
-```bash
-git clone --branch codelab-workshop https://github.com/Saoussen-CH/managed-issue-resolver.git
-cd managed-issue-resolver
-git checkout -b master
-```
-
-> aside positive
->
-> **Why `git checkout -b master`?** The `deploy.yml` workflow triggers on PRs merged to `master`. Creating a
-> local `master` branch now means when you push to your own GitHub repo in the next step, `master` becomes the
-> default branch and all workflows fire as expected.
-
-### Create your GitHub repo
-
-Push the codelab content to your own GitHub repo so GitHub Actions can run:
-
-```bash
-gh auth login
-git remote remove origin
-gh repo create managed-issue-resolver --public --source=. --remote=origin --push
-REPO=$(gh api user --jq '.login')/managed-issue-resolver
-```
+1. Go to [github.com/Saoussen-CH/managed-issue-resolver](https://github.com/Saoussen-CH/managed-issue-resolver)
+2. Click **Use this template** → **Create a new repository**
+3. Name it `github-issue-resolver`, select **Public**, click **Create repository**
 
 > aside positive
 >
 > **Why public?** The `GITHUB_TOKEN` that GitHub Actions provides automatically has `contents: write` and
 > `pull-requests: write` permissions by default on public repos. Private repos require additional configuration.
+
+### Clone your repo
+
+```bash
+gh auth login
+REPO=$(gh api user --jq '.login')/github-issue-resolver
+git clone https://github.com/$REPO.git
+cd github-issue-resolver
+```
 
 ### Authenticate and configure your project
 
@@ -266,7 +236,7 @@ The workflows read secrets from the repository. Add them before the first run:
 
 ```bash
 PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
-REPO=$(gh api user --jq '.login')/managed-issue-resolver
+REPO=$(gh api user --jq '.login')/github-issue-resolver
 
 gh secret set GCP_SA_KEY --repo "$REPO" < sa-key.json
 gh secret set GCP_PROJECT_ID --body "$PROJECT_ID" --repo "$REPO"
@@ -288,6 +258,73 @@ rm sa-key.json
 > resolver agent cannot open a PR and the workflow will fail with a `403` error.
 
 The secrets `RESOLVER_AGENT_ID` and `CD_AGENT_ID` will be added in the next steps after the agents are created.
+
+## The App You'll Fix
+
+Duration: 05:00
+
+Before writing any agent code, deploy the app and see the bugs for yourself.
+
+The target app is a **conference session browser** — 12 sessions across 5 tracks (AI & ML, Cloud, Mobile, Web,
+Security) over 2 days. It has four seeded bugs, all in `utils.py`:
+
+| Bug | Symptom | Root cause |
+|---|---|---|
+| Filter by track | Clicking any track filter returns an empty list | Input normalised to `"ai-and-ml"` but sessions store `"AI & ML"` |
+| Filter by day | Filtering by Day 1 or Day 2 returns nothing | Day param arrives as string `"1"`, sessions store int `1` |
+| Speaker search | `"eric"` does not match `"Eric Schmidt"` | Case-sensitive comparison |
+| Session count | The count badge shows the wrong number | Counts all sessions instead of the filtered subset |
+
+### Deploy the broken app
+
+Create an Artifact Registry repository for Docker images:
+
+```bash
+PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
+
+gcloud artifacts repositories create github-issue-resolver \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=$PROJECT_ID
+```
+
+Deploy the initial (broken) version to Cloud Run:
+
+```bash
+gcloud run deploy target-app \
+  --source target-app/ \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --project=$PROJECT_ID
+```
+
+This takes 2-3 minutes. When complete, you'll see:
+
+```text
+Service URL: https://target-app-xxxx.us-central1.run.app
+```
+
+Open the URL in your browser. Click any track filter — notice the session list goes empty. That is bug #1.
+
+![Broken app: track filter returns no sessions](img/broken-app.png)
+
+> aside negative
+>
+> **`--allow-unauthenticated` is intentional here.** It makes the app publicly accessible for demo purposes.
+> In production, remove this flag and add IAM-based authentication.
+
+### What you'll build to fix it
+
+![Architecture diagram](img/diagram.png)
+
+Two managed agents handle the full lifecycle:
+
+1. **Resolver agent** — triggered by the `ai-resolve` label: reads the issue, clones the repo, runs tests,
+   fixes `utils.py`, and opens a PR.
+2. **CD agent** — triggered when the PR merges: deploys the fix to Cloud Run with canary traffic splitting,
+   monitors error rates via Cloud Monitoring MCP, then promotes or rolls back automatically.
+
+You review and merge the PR. Everything else is autonomous.
 
 ## What is the Managed Agents API?
 
@@ -895,50 +932,6 @@ All agents OK. Ready to trigger the workflow.
 > Check that `GOOGLE_CLOUD_PROJECT=your-project-id` is set in `.env` and that you ran the command from the
 > repo root.
 
-## Deploy the Target App
-
-Duration: 05:00
-
-The target app is a conference session browser with four seeded bugs. Deploy the broken version to Cloud Run
-now so the CD agent has a live service to update when the resolver agent's fix is merged.
-
-Create an Artifact Registry repository to store the Docker images that Cloud Build will produce:
-
-```bash
-PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
-
-gcloud artifacts repositories create managed-issue-resolver \
-  --repository-format=docker \
-  --location=us-central1 \
-  --project=$PROJECT_ID
-```
-
-Deploy the initial (broken) version of the conference session browser to Cloud Run:
-
-```bash
-gcloud run deploy target-app \
-  --source target-app/ \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --project=$PROJECT_ID
-```
-
-This takes 2-3 minutes. When complete, you'll see:
-
-```text
-Service URL: https://target-app-xxxx.us-central1.run.app
-```
-
-Open the URL in your browser. Click any track filter: notice the session list goes empty. That is the first
-of four seeded bugs the agent will fix.
-
-![Broken app: track filter returns no sessions](img/broken-app.png)
-
-> aside negative
->
-> **`--allow-unauthenticated` is intentional here.** It makes the app publicly accessible for demo purposes.
-> In production, remove this flag and add IAM-based authentication.
-
 ## Invoke the Resolver Agent
 
 Duration: 08:00
@@ -1087,7 +1080,7 @@ GitHub Actions checks out your repo when it runs. Push `resolve.py` now so the w
 ```bash
 git add starter/resolver/resolve.py
 git commit -m "fill in resolve.py"
-git push origin master
+git push origin main
 ```
 
 ## Trigger Issue Resolution
@@ -1299,7 +1292,7 @@ The CD workflow runs `deploy.py` from the checked-out repo. Push it before mergi
 ```bash
 git add starter/cd-agent/deploy.py
 git commit -m "fill in deploy.py"
-git push origin master
+git push origin main
 ```
 
 ## Review and Deploy
@@ -1404,7 +1397,7 @@ The script:
 1. **Waits** for any in-progress CD workflows to finish
 2. **Closes** all open PRs
 3. **Restores** `target-app/utils.py` from `setup/utils_broken.py` (the canonical broken version)
-4. **Commits and pushes** the reset to master
+4. **Commits and pushes** the reset to main
 5. **Redeploys** the broken app to Cloud Run
 
 When done:

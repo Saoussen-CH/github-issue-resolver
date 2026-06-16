@@ -3,7 +3,7 @@ name: Deploy Fix with Managed Agent
 on:
   pull_request:
     types: [closed]
-    branches: [master]
+    branches: [main]
 
 jobs:
   deploy:
