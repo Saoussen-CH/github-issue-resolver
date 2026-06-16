@@ -189,8 +189,8 @@ gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34; --repo &#34;$REPO&#3
 
       </google-codelab-step>
     
-      <google-codelab-step label="The App You&#39;ll Fix" duration="5">
-        <p>Before writing any agent code, deploy the app and see the bugs for yourself.</p>
+      <google-codelab-step label="What You&#39;ll Fix and How" duration="5">
+        <p>Before writing any agent code, deploy the app and see the bugs for yourself. Then you&#39;ll see the two-agent architecture that fixes them.</p>
 <p>The target app is a <strong>conference session browser</strong> — 12 sessions across 5 tracks (AI &amp; ML, Cloud, Mobile, Web, Security) over 2 days. It has four seeded bugs, all in <code>utils.py</code>:</p>
 <table>
 <tr><td colspan="1" rowspan="1"><p>Bug</p>
@@ -214,7 +214,7 @@ gh secret set CLOUD_RUN_REGION --body &#34;us-central1&#34; --repo &#34;$REPO&#3
 </td><td colspan="1" rowspan="1"><p>Counts all sessions instead of the filtered subset</p>
 </td></tr>
 </table>
-<h2 is-upgraded>Deploy the broken app</h2>
+<h2 is-upgraded>The app you&#39;ll fix</h2>
 <p>Create an Artifact Registry repository for Docker images:</p>
 <pre><code language="language-bash" class="language-bash">PROJECT_ID=$(grep GOOGLE_CLOUD_PROJECT .env | cut -d= -f2)
 
@@ -237,7 +237,7 @@ gcloud artifacts repositories create managed-issue-resolver \
 <p class="image-container"><img alt="Broken app: track filter returns no sessions" src="img/75eaf2ec0325c600.png"></p>
 <aside class="warning"><p><strong><code>--allow-unauthenticated</code></strong><strong> is intentional here.</strong> It makes the app publicly accessible for demo purposes. In production, remove this flag and add IAM-based authentication.</p>
 </aside>
-<h2 is-upgraded>What you&#39;ll build to fix it</h2>
+<h2 is-upgraded>How you&#39;ll fix it</h2>
 <p class="image-container"><img alt="Architecture diagram" src="img/4912f096c8a857e0.png"></p>
 <p>Two managed agents handle the full lifecycle:</p>
 <ol type="1">
