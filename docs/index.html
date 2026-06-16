@@ -976,11 +976,7 @@ Bug is in \`target-app/utils.py\`.&#34; \
     )
 </code></pre>
 <p><strong><code>gcp_token</code></strong> is the output of <code>gcloud auth print-access-token</code>. The agent sets <code>CLOUDSDK_AUTH_ACCESS_TOKEN</code> in its shell environment before running any <code>gcloud</code> command, which authenticates all subsequent calls without needing a key file in the sandbox.</p>
-<p><strong><code>PROJECT_ID</code></strong></p>
-<p><strong>, </strong></p>
-<p><strong><code>REGION</code></strong></p>
-<p><strong>, </strong></p>
-<p><strong><code>SERVICE_NAME</code></strong> cannot be inferred from the image URL alone. They are independent configuration values.</p>
+<p><code>PROJECT_ID</code>, <code>REGION</code>, and <code>SERVICE_NAME</code> cannot be inferred from the image URL alone. They are independent configuration values.</p>
 <p><strong><code>image_url</code></strong> is the pre-built container image from the Cloud Build step. The CD agent deploys it; it does not build it.</p>
 <p><strong>&#34;Follow the canary deploy skill&#34;</strong> explicitly instructs the agent to use the SKILL.md playbook. Without it the agent might attempt a simpler direct <code>--to-latest</code> deploy and skip the canary window entirely.</p>
 <h2 is-upgraded>TODO 2 - Call the Interactions API with three MCP servers</h2>
@@ -1024,11 +1020,7 @@ Bug is in \`target-app/utils.py\`.&#34; \
 <p><strong>GitHub MCP</strong> - the agent uses it to: (1) read the PR body and extract &#34;Closes #N&#34; to get the issue number, (2) post a comment with the deployment result and live URL, and (3) close the issue on successful promotion.</p>
 <p><strong>Cloud Monitoring MCP</strong> - the only tool that returns error rates with a request count denominator. The agent calls it every 60 seconds during the canary window. <code>gcloud monitoring</code> in bash requires complex filter syntax; the MCP exposes a natural-language query interface the agent can use directly.</p>
 <p><strong>Cloud Logging MCP</strong> - used only on rollback, to fetch the actual error messages for the issue comment. Both GCP MCP servers use the same <code>gcp_token</code>.</p>
-<p><strong><code>stream=True</code></strong></p>
-<p><strong>, </strong></p>
-<p><strong><code>background=True</code></strong></p>
-<p><strong>, </strong></p>
-<p><strong><code>store=True</code></strong> have the same meaning as in <code>resolve.py</code>. The CD agent runs for 7-10 minutes (deploy + 5-minute canary window + promote/rollback), which makes <code>background=True</code> especially important here.</p>
+<p><code>stream=True</code>, <code>background=True</code>, and <code>store=True</code> have the same meaning as in <code>resolve.py</code>. The CD agent runs for 7-10 minutes (deploy + 5-minute canary window + promote/rollback), which makes <code>background=True</code> especially important here.</p>
 <p>Compare your completed file with <code>cd-agent/deploy.py</code> when done.</p>
 <h2 is-upgraded>Push deploy.py to GitHub</h2>
 <p>The CD workflow runs <code>deploy.py</code> from the checked-out repo. Push it before merging the PR:</p>
