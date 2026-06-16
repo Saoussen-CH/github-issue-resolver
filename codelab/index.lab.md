@@ -259,11 +259,11 @@ rm sa-key.json
 
 The secrets `RESOLVER_AGENT_ID` and `CD_AGENT_ID` will be added in the next steps after the agents are created.
 
-## The App You'll Fix
+## What You'll Fix and How
 
 Duration: 05:00
 
-Before writing any agent code, deploy the app and see the bugs for yourself.
+Before writing any agent code, deploy the app and see the bugs for yourself. Then you'll see the two-agent architecture that fixes them.
 
 The target app is a **conference session browser** — 12 sessions across 5 tracks (AI & ML, Cloud, Mobile, Web,
 Security) over 2 days. It has four seeded bugs, all in `utils.py`:
@@ -275,7 +275,7 @@ Security) over 2 days. It has four seeded bugs, all in `utils.py`:
 | Speaker search | `"eric"` does not match `"Eric Schmidt"` | Case-sensitive comparison |
 | Session count | The count badge shows the wrong number | Counts all sessions instead of the filtered subset |
 
-### Deploy the broken app
+### The app you'll fix
 
 Create an Artifact Registry repository for Docker images:
 
@@ -313,7 +313,7 @@ Open the URL in your browser. Click any track filter — notice the session list
 > **`--allow-unauthenticated` is intentional here.** It makes the app publicly accessible for demo purposes.
 > In production, remove this flag and add IAM-based authentication.
 
-### What you'll build to fix it
+### How you'll fix it
 
 ![Architecture diagram](img/diagram.png)
 
