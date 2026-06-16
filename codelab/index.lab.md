@@ -1218,7 +1218,7 @@ Find the `# TODO 1` comment and replace it with:
 `CLOUDSDK_AUTH_ACCESS_TOKEN` in its shell environment before running any `gcloud` command, which authenticates
 all subsequent calls without needing a key file in the sandbox.
 
-**`PROJECT_ID`, `REGION`, `SERVICE_NAME`** cannot be inferred from the image URL alone. They are independent
+`PROJECT_ID`, `REGION`, and `SERVICE_NAME` cannot be inferred from the image URL alone. They are independent
 configuration values.
 
 **`image_url`** is the pre-built container image from the Cloud Build step. The CD agent deploys it; it does
@@ -1279,7 +1279,7 @@ the MCP exposes a natural-language query interface the agent can use directly.
 **Cloud Logging MCP** - used only on rollback, to fetch the actual error messages for the issue comment. Both
 GCP MCP servers use the same `gcp_token`.
 
-**`stream=True`, `background=True`, `store=True`** have the same meaning as in `resolve.py`. The CD agent
+`stream=True`, `background=True`, and `store=True` have the same meaning as in `resolve.py`. The CD agent
 runs for 7-10 minutes (deploy + 5-minute canary window + promote/rollback), which makes `background=True`
 especially important here.
 
