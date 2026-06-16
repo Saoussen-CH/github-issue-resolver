@@ -22,7 +22,7 @@ flowchart TD
         B[resolve.py]
     end
 
-    B -->|"Managed Agents API\nclient.interactions.create(agent=resolver, tools=[GitHub MCP])"| C
+    B -->|"Managed Agents API\nclient.interactions.create(agent=managed-issue-resolver, tools=[GitHub MCP])"| C
 
     subgraph RA["Managed Agents Sandbox: Resolver (Gemini Enterprise Agent Platform)"]
         C[Read issue via GitHub MCP]
@@ -41,7 +41,7 @@ flowchart TD
         J --> K[deploy.py]
     end
 
-    K -->|"Managed Agents API\nclient.interactions.create(agent=cd, tools=[GitHub MCP, Cloud Monitoring MCP, Cloud Logging MCP])"| L
+    K -->|"Managed Agents API\nclient.interactions.create(agent=managed-issue-cd, tools=[GitHub MCP, Cloud Monitoring MCP, Cloud Logging MCP])"| L
 
     subgraph CDA["Managed Agents Sandbox: CD Agent (Gemini Enterprise Agent Platform)"]
         L[Deploy canary revision at 10%]
@@ -72,7 +72,7 @@ All three MCP servers are hosted - no deployment or infrastructure required.
 ```
 .github/workflows/
   resolve.yml           # triggered on issue labeled "ai-resolve"
-  deploy.yml            # triggered on PR merged to master
+  deploy.yml            # triggered on PR merged to main
 
 resolver/
   resolve.py            # Resolver Agent: calls Managed Agents API
@@ -135,13 +135,7 @@ docs/                   # generated codelab (GitHub Pages source)
 
 The step-by-step workshop is in `codelab/index.lab.md` (Google Codelabs format). The generated HTML is published from `docs/` via GitHub Pages.
 
-The workshop starter files and codelab are on the **`codelab-workshop`** branch. Participants clone that branch and push as `master` to their own repo:
-
-```bash
-git clone --branch codelab-workshop https://github.com/Saoussen-CH/managed-issue-resolver.git
-cd managed-issue-resolver
-git checkout -b master
-```
+The workshop starter files and codelab are on the **`codelab-workshop`** branch, published as the `github-issue-resolver` template repository. Participants use **Use this template** on GitHub to create their own copy.
 
 To regenerate after editing `index.lab.md`:
 
@@ -369,4 +363,4 @@ After the demo completes, run:
 bash setup/reset_demo.sh
 ```
 
-This waits for any in-progress CD workflows, closes open PRs, restores the 4 bugs in `utils.py`, then pushes to master (force-push if the agent's merged fix is ahead of local) and redeploys the broken app to Cloud Run. Then open a new issue with the `ai-resolve` label.
+This waits for any in-progress CD workflows, closes open PRs, restores the 4 bugs in `utils.py`, then pushes to main (force-push if the agent's merged fix is ahead of local) and redeploys the broken app to Cloud Run. Then open a new issue with the `ai-resolve` label.

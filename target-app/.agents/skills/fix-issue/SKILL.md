@@ -49,7 +49,7 @@ Called with a GitHub issue URL and an authenticated repository clone URL.
 9. Open a pull request using the GitHub MCP server:
    - Title: `fix: <description> (closes #<ISSUE_NUMBER>)`
    - Body: what was broken, what you changed, confirmation that all tests pass, `Closes #<ISSUE_NUMBER>`
-   - Base: `master`, Head: `fix/issue-<ISSUE_NUMBER>`
+   - Base: `main`, Head: `fix/issue-<ISSUE_NUMBER>`
 
 10. Post a comment on the original issue using the GitHub MCP server: "PR opened: <PR_URL>"
 
