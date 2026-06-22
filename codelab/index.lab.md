@@ -332,6 +332,30 @@ Duration: 05:00
 
 Before writing any code, let's understand the platform you are building on.
 
+### The architectural shift
+
+Resolving a GitHub issue end to end — from reading the bug report to a live production deployment — normally requires two roles:
+
+**The developer:**
+- Reads and understands the issue
+- Reproduces the failure locally
+- Navigates the codebase to find the root cause
+- Writes the fix
+- Runs the tests and iterates until they pass
+- Opens a PR
+
+**The DevOps engineer:**
+- Deploys the fix to production
+- Monitors canary traffic for regressions
+- Promotes to 100% or rolls back
+- Closes the issue and notifies the team
+
+Both roles are now replaced by two config files, two Python scripts, and three MCP servers. Nobody sits at a terminal. Nobody iterates. The agent has its own computer: it clones the repo, runs the tests, fixes the bug, opens the PR, monitors the canary, and promotes or rolls back, all autonomously. The only human checkpoint is the PR review.
+
+This is not a DevOps automation tool. It is an autonomous software delivery pipeline driven by a single API call.
+
+### What makes this possible
+
 Most LLM APIs give you text-in, text-out: you send a prompt, the model returns a response. That is enough for
 summarization or Q&A. It is not enough for resolving a GitHub issue - the agent needs to clone a repo, run
 tests, write files, and open a PR. For that, the model needs real compute.
