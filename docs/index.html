@@ -34,7 +34,7 @@
           <hr style="border:none;border-top:1px solid #dadce0;margin:0 0 16px 0;">
           <div style="display:flex;align-items:center;margin-bottom:12px;color:#5f6368;font-size:14px;">
             <svg style="margin-right:12px;flex-shrink:0;" xmlns="http://www.w3.org/2000/svg" height="20" width="20" viewBox="0 0 24 24" fill="#5f6368"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
-            <span>Last updated Jun 16, 2026</span>
+            <span>Last updated Jun 22, 2026</span>
           </div>
           <div style="display:flex;align-items:center;color:#5f6368;font-size:14px;">
             <svg style="margin-right:12px;flex-shrink:0;" xmlns="http://www.w3.org/2000/svg" height="20" width="20" viewBox="0 0 24 24" fill="#5f6368"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
@@ -251,6 +251,27 @@ gcloud artifacts repositories create managed-issue-resolver \
     
       <google-codelab-step label="What is the Managed Agents API?" duration="5">
         <p>Before writing any code, let&#39;s understand the platform you are building on.</p>
+<h2 is-upgraded>The architectural shift</h2>
+<p>Resolving a GitHub issue end to end — from reading the bug report to a live production deployment — normally requires two roles:</p>
+<p><strong>The developer:</strong></p>
+<ul>
+<li>Reads and understands the issue</li>
+<li>Reproduces the failure locally</li>
+<li>Navigates the codebase to find the root cause</li>
+<li>Writes the fix</li>
+<li>Runs the tests and iterates until they pass</li>
+<li>Opens a PR</li>
+</ul>
+<p><strong>The DevOps engineer:</strong></p>
+<ul>
+<li>Deploys the fix to production</li>
+<li>Monitors canary traffic for regressions</li>
+<li>Promotes to 100% or rolls back</li>
+<li>Closes the issue and notifies the team</li>
+</ul>
+<p>Both roles are now replaced by two config files, two Python scripts, and three MCP servers. Nobody sits at a terminal. Nobody iterates. The agent has its own computer: it clones the repo, runs the tests, fixes the bug, opens the PR, monitors the canary, and promotes or rolls back, all autonomously. The only human checkpoint is the PR review.</p>
+<p>This is not a DevOps automation tool. It is an autonomous software delivery pipeline driven by a single API call.</p>
+<h2 is-upgraded>What makes this possible</h2>
 <p>Most LLM APIs give you text-in, text-out: you send a prompt, the model returns a response. That is enough for summarization or Q&amp;A. It is not enough for resolving a GitHub issue - the agent needs to clone a repo, run tests, write files, and open a PR. For that, the model needs real compute.</p>
 <p>The <strong>Managed Agents API</strong> (part of Gemini Enterprise Agent Platform) runs a Gemini model inside a fully provisioned Ubuntu sandbox. The model and the compute environment are co-located: the model can run <code>bash</code>, execute Python, call <code>git</code>, run <code>pytest</code>, and make HTTP requests as part of a single interaction.</p>
 <pre><code language="language-text" class="language-text">Your code (GitHub Actions workflow)
