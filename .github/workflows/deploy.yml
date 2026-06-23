@@ -56,6 +56,13 @@ jobs:
           done
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
+      - name: Update CD agent MCP config with current tokens
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          CD_AGENT_ID: ${{ secrets.CD_AGENT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python setup/update_cd_agent_token.py
+
       - name: Run CD agent
         env:
           GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
@@ -64,6 +71,6 @@ jobs:
           CD_AGENT_ID: ${{ secrets.CD_AGENT_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python starter/cd-agent/deploy.py \
+          python cd-agent/deploy.py \
             "${{ github.event.pull_request.html_url }}" \
             "${{ steps.build.outputs.image }}"

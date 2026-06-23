@@ -39,10 +39,17 @@ jobs:
               body: "Agent is working on this. A PR will appear here when the fix is ready."
             });
 
+      - name: Update agent MCP config with current GitHub token
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          RESOLVER_AGENT_ID: ${{ secrets.RESOLVER_AGENT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python setup/update_agent_token.py
+
       - name: Run resolver agent
         env:
           GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
           RESOLVER_AGENT_ID: ${{ secrets.RESOLVER_AGENT_ID }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python starter/resolver/resolve.py "${{ github.event.issue.html_url }}"
+        run: python resolver/resolve.py "${{ github.event.issue.html_url }}"

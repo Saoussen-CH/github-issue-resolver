@@ -9,7 +9,6 @@ SERVICE_NAME = os.environ.get("CLOUD_RUN_SERVICE", "target-app")
 GH_TOKEN = os.environ["GH_TOKEN"]
 CD_AGENT_ID = os.environ["CD_AGENT_ID"]
 
-# GCP access token for gcloud commands and Google MCP servers.
 gcp_token = subprocess.check_output(
     ["gcloud", "auth", "print-access-token"]
 ).decode().strip()
@@ -29,34 +28,11 @@ def deploy(pr_url: str, image_url: str):
         f"Close the linked GitHub issue on success."
     )
 
-    # X-MCP-Exclude-Tools removes delete_file from GitHub MCP to avoid
-    # conflict with the sandbox's built-in delete_file tool.
+    # MCP tools are baked into the agent via update_cd_agent_token.py
+    # before this script runs — no tools param needed here.
     stream = client.interactions.create(
         agent=CD_AGENT_ID,
         input=prompt,
-        tools=[
-            {
-                "type": "mcp_server",
-                "url": "https://api.githubcopilot.com/mcp/",
-                "name": "github",
-                "headers": {
-                    "Authorization": f"Bearer {GH_TOKEN}",
-                    "X-MCP-Exclude-Tools": "delete_file",
-                },
-            },
-            {
-                "type": "mcp_server",
-                "url": "https://monitoring.googleapis.com/mcp",
-                "name": "cloudmonitoring",
-                "headers": {"Authorization": f"Bearer {gcp_token}"},
-            },
-            {
-                "type": "mcp_server",
-                "url": "https://logging.googleapis.com/mcp",
-                "name": "cloudlogging",
-                "headers": {"Authorization": f"Bearer {gcp_token}"},
-            },
-        ],
         stream=True,
         background=True,
         store=True,

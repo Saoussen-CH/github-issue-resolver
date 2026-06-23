@@ -7,7 +7,6 @@ GH_TOKEN = os.environ["GH_TOKEN"]
 REPO_URL = os.environ["REPO_URL"]
 RESOLVER_AGENT_ID = os.environ["RESOLVER_AGENT_ID"]
 
-# genai client authenticates via ADC set by google-github-actions/auth@v2
 client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
 
 
@@ -21,22 +20,11 @@ def resolve(issue_url: str):
         f"Use the authenticated clone URL for git clone and git push."
     )
 
-    # X-MCP-Exclude-Tools removes delete_file from GitHub MCP to avoid
-    # conflict with the sandbox's built-in delete_file tool.
+    # MCP tools are baked into the agent via update_agent_token.py
+    # before this script runs — no tools param needed here.
     stream = client.interactions.create(
         agent=RESOLVER_AGENT_ID,
         input=prompt,
-        tools=[
-            {
-                "type": "mcp_server",
-                "url": "https://api.githubcopilot.com/mcp/",
-                "name": "github",
-                "headers": {
-                    "Authorization": f"Bearer {GH_TOKEN}",
-                    "X-MCP-Exclude-Tools": "delete_file",
-                },
-            },
-        ],
         stream=True,
         background=True,
         store=True,
